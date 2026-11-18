@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // Snapshot is what the GeoPackage said about a record when it was annotated.
@@ -22,7 +24,45 @@ type Draft struct {
 	FID            int64  `json:"fid"`
 	Category       string `json:"category"`
 	ReferenceLabel string `json:"reference_label"`
-	Notes          string `json:"notes"`
+	// ReferenceDate is the date of the imagery the reference screenshot
+	// shows, as the reference map gives it: YYYY, YYYY-MM or YYYY-MM-DD,
+	// ReferenceDateNotShown, or empty when it was not recorded.
+	ReferenceDate string `json:"reference_date"`
+	Notes         string `json:"notes"`
+	// OpenedAt is when the page opened the record, in RFC 3339. It is kept
+	// with the revision, so the time a judgement took can be measured.
+	OpenedAt string `json:"opened_at"`
+}
+
+// ReferenceDateNotShown records that the reference map showed no date for
+// its imagery, which is not the same as a date nobody wrote down.
+const ReferenceDateNotShown = "not shown"
+
+var partialDate = regexp.MustCompile(`^\d{4}(-\d{2}(-\d{2})?)?$`)
+
+// checkReferenceDate accepts YYYY, YYYY-MM and YYYY-MM-DD dates that exist,
+// ReferenceDateNotShown and the empty string.
+func checkReferenceDate(d string) error {
+	if d == "" || d == ReferenceDateNotShown {
+		return nil
+	}
+	if partialDate.MatchString(d) {
+		layout := map[int]string{4: "2006", 7: "2006-01", 10: "2006-01-02"}[len(d)]
+		if _, err := time.Parse(layout, d); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("the date of the reference imagery %q is not a date written as YYYY, YYYY-MM or YYYY-MM-DD", d)
+}
+
+// openedAt reads the page's opening time; one that cannot be read, or that
+// lies after the save, is not kept rather than kept wrong.
+func openedAt(s string, saved time.Time) any {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil || t.After(saved) {
+		return nil
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 // Annotation is the current answer for one record.
@@ -36,6 +76,7 @@ type Annotation struct {
 	Category       string   `json:"category"`
 	FirstCategory  string   `json:"first_category"`
 	ReferenceLabel string   `json:"reference_label"`
+	ReferenceDate  string   `json:"reference_date"`
 	Notes          string   `json:"notes"`
 	Annotator      string   `json:"annotator"`
 	CreatedAt      string   `json:"created_at"`
@@ -48,11 +89,15 @@ type HistoryEntry struct {
 	Revision         int    `json:"revision"`
 	Category         string `json:"category"`
 	ReferenceLabel   string `json:"reference_label"`
+	ReferenceDate    string `json:"reference_date"`
 	Notes            string `json:"notes"`
 	Annotator        string `json:"annotator"`
 	SourceImageID    *int64 `json:"source_image_id"`
 	ReferenceImageID *int64 `json:"reference_image_id"`
-	SavedAt          string `json:"saved_at"`
+	// OpenedAt is when the record was opened before this save; nil for
+	// revisions saved before it was recorded.
+	OpenedAt *string `json:"opened_at"`
+	SavedAt  string  `json:"saved_at"`
 }
 
 // Entry is everything the project holds about one feature: its annotation,
@@ -74,14 +119,14 @@ type Summary struct {
 }
 
 const annotationColumns = `layer, fid, record_id, record_name, lon, lat, category, first_category,
-	reference_label, notes, annotator, created_at, updated_at, revision`
+	reference_label, reference_date, notes, annotator, created_at, updated_at, revision`
 
 func scanAnnotation(s interface{ Scan(...any) error }) (*Annotation, error) {
 	var a Annotation
 	var lon, lat sql.NullFloat64
 	if err := s.Scan(&a.Layer, &a.FID, &a.RecordID, &a.RecordName, &lon, &lat, &a.Category,
-		&a.FirstCategory, &a.ReferenceLabel, &a.Notes, &a.Annotator, &a.CreatedAt, &a.UpdatedAt,
-		&a.Revision); err != nil {
+		&a.FirstCategory, &a.ReferenceLabel, &a.ReferenceDate, &a.Notes, &a.Annotator, &a.CreatedAt,
+		&a.UpdatedAt, &a.Revision); err != nil {
 		return nil, err
 	}
 	if lon.Valid && lat.Valid {
@@ -131,7 +176,11 @@ func (p *Project) Record(layer string, fid int64) (*Entry, error) {
 func (p *Project) Save(d Draft, snap Snapshot) (*Entry, error) {
 	d.Category = strings.TrimSpace(d.Category)
 	d.ReferenceLabel = strings.TrimSpace(d.ReferenceLabel)
+	d.ReferenceDate = strings.TrimSpace(d.ReferenceDate)
 	d.Notes = strings.TrimSpace(d.Notes)
+	if err := checkReferenceDate(d.ReferenceDate); err != nil {
+		return nil, err
+	}
 	settings, err := p.Settings()
 	if err != nil {
 		return nil, err
@@ -148,14 +197,16 @@ func (p *Project) Save(d Draft, snap Snapshot) (*Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	unchanged := cur != nil && cur.Category == d.Category && cur.ReferenceLabel == d.ReferenceLabel && cur.Notes == d.Notes
-	empty := cur == nil && d.Category == "" && d.ReferenceLabel == "" && d.Notes == ""
+	unchanged := cur != nil && cur.Category == d.Category && cur.ReferenceLabel == d.ReferenceLabel &&
+		cur.ReferenceDate == d.ReferenceDate && cur.Notes == d.Notes
+	empty := cur == nil && d.Category == "" && d.ReferenceLabel == "" && d.ReferenceDate == "" && d.Notes == ""
 	if unchanged || empty {
 		// The database has one connection, which the transaction holds.
 		_ = tx.Rollback()
 		return p.Record(d.Layer, d.FID)
 	}
-	t := now()
+	savedAt := time.Now().UTC()
+	t := savedAt.Format(time.RFC3339)
 	first := d.Category
 	revision := 1
 	created := t
@@ -167,15 +218,16 @@ func (p *Project) Save(d Draft, snap Snapshot) (*Entry, error) {
 		}
 	}
 	if _, err := tx.Exec(`INSERT INTO annotation (`+annotationColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (layer, fid) DO UPDATE SET
 		  record_id = excluded.record_id, record_name = excluded.record_name,
 		  lon = excluded.lon, lat = excluded.lat, category = excluded.category,
 		  first_category = excluded.first_category, reference_label = excluded.reference_label,
-		  notes = excluded.notes, annotator = excluded.annotator,
-		  updated_at = excluded.updated_at, revision = excluded.revision`,
+		  reference_date = excluded.reference_date, notes = excluded.notes,
+		  annotator = excluded.annotator, updated_at = excluded.updated_at,
+		  revision = excluded.revision`,
 		d.Layer, d.FID, snap.RecordID, snap.RecordName, snap.Lon, snap.Lat, d.Category, first,
-		d.ReferenceLabel, d.Notes, settings.Annotator, created, t, revision); err != nil {
+		d.ReferenceLabel, d.ReferenceDate, d.Notes, settings.Annotator, created, t, revision); err != nil {
 		return nil, fmt.Errorf("save annotation: %w", err)
 	}
 	src, err := p.currentImage(tx, d.Layer, d.FID, SideSource)
@@ -187,10 +239,11 @@ func (p *Project) Save(d Draft, snap Snapshot) (*Entry, error) {
 		return nil, err
 	}
 	if _, err := tx.Exec(`INSERT INTO annotation_history
-		(layer, fid, revision, category, reference_label, notes, annotator, source_image_id, reference_image_id, saved_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		d.Layer, d.FID, revision, d.Category, d.ReferenceLabel, d.Notes, settings.Annotator,
-		imageID(src), imageID(ref), t); err != nil {
+		(layer, fid, revision, category, reference_label, reference_date, notes, annotator,
+		 source_image_id, reference_image_id, opened_at, saved_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.Layer, d.FID, revision, d.Category, d.ReferenceLabel, d.ReferenceDate, d.Notes, settings.Annotator,
+		imageID(src), imageID(ref), openedAt(d.OpenedAt, savedAt), t); err != nil {
 		return nil, fmt.Errorf("save annotation history: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -217,8 +270,8 @@ func imageID(img *Image) *int64 {
 
 // History lists the saved revisions of one record, oldest first.
 func (p *Project) History(layer string, fid int64) ([]HistoryEntry, error) {
-	rows, err := p.db.Query(`SELECT revision, category, reference_label, notes, annotator,
-		source_image_id, reference_image_id, saved_at
+	rows, err := p.db.Query(`SELECT revision, category, reference_label, reference_date, notes, annotator,
+		source_image_id, reference_image_id, opened_at, saved_at
 		FROM annotation_history WHERE layer = ? AND fid = ? ORDER BY id`, layer, fid)
 	if err != nil {
 		return nil, fmt.Errorf("read history of %s/%d: %w", layer, fid, err)
@@ -227,8 +280,8 @@ func (p *Project) History(layer string, fid int64) ([]HistoryEntry, error) {
 	out := []HistoryEntry{}
 	for rows.Next() {
 		var h HistoryEntry
-		if err := rows.Scan(&h.Revision, &h.Category, &h.ReferenceLabel, &h.Notes, &h.Annotator,
-			&h.SourceImageID, &h.ReferenceImageID, &h.SavedAt); err != nil {
+		if err := rows.Scan(&h.Revision, &h.Category, &h.ReferenceLabel, &h.ReferenceDate, &h.Notes,
+			&h.Annotator, &h.SourceImageID, &h.ReferenceImageID, &h.OpenedAt, &h.SavedAt); err != nil {
 			return nil, fmt.Errorf("read history of %s/%d: %w", layer, fid, err)
 		}
 		out = append(out, h)
@@ -340,8 +393,8 @@ type HistoryRow struct {
 
 // LayerHistory lists every saved revision of a layer, in the order saved.
 func (p *Project) LayerHistory(layer string) ([]HistoryRow, error) {
-	rows, err := p.db.Query(`SELECT fid, revision, category, reference_label, notes, annotator,
-		source_image_id, reference_image_id, saved_at
+	rows, err := p.db.Query(`SELECT fid, revision, category, reference_label, reference_date, notes, annotator,
+		source_image_id, reference_image_id, opened_at, saved_at
 		FROM annotation_history WHERE layer = ? ORDER BY id`, layer)
 	if err != nil {
 		return nil, fmt.Errorf("read history of %s: %w", layer, err)
@@ -350,8 +403,8 @@ func (p *Project) LayerHistory(layer string) ([]HistoryRow, error) {
 	var out []HistoryRow
 	for rows.Next() {
 		var h HistoryRow
-		if err := rows.Scan(&h.FID, &h.Revision, &h.Category, &h.ReferenceLabel, &h.Notes, &h.Annotator,
-			&h.SourceImageID, &h.ReferenceImageID, &h.SavedAt); err != nil {
+		if err := rows.Scan(&h.FID, &h.Revision, &h.Category, &h.ReferenceLabel, &h.ReferenceDate, &h.Notes,
+			&h.Annotator, &h.SourceImageID, &h.ReferenceImageID, &h.OpenedAt, &h.SavedAt); err != nil {
 			return nil, fmt.Errorf("read history of %s: %w", layer, err)
 		}
 		out = append(out, h)

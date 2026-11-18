@@ -75,7 +75,10 @@ identifier, which changed with the name and is now fixed in `build/darwin/Info.p
      with the next record. A pair given longitude first is turned round when only that
      order falls within the layer. A map capture with the diamond in view shows it, and
      its legend gives the distance from the record.
-   - **1** to **9** choose the category; type what Google Maps shows at the point and any notes.
+   - **1** to **9** choose the category; type what Google Maps shows at the point, the date
+     of its imagery (Street View gives it as "Image capture"; when the reference shows none,
+     tick "The reference shows no date"), and any notes. `14/03/2023` is read as
+     `2023-03-14`.
    - **⌘↵** saves and moves to the next record; **⌥↓ / ⌥↑** move without leaving the form
      (unsaved changes are saved first). **F** shows both screenshots full size; **M**
      switches the left slot between the live map and its screenshot.
@@ -89,9 +92,14 @@ capture shows the desktop and no windows.
 ```
 project/
   annotations.sqlite       the project: settings, answers, history, screenshot index
+  annotations.schema-<n>.sqlite   the project as it was before an upgrade from version n
   images/<layer>/<fid>/    source-<time>.png, reference-<time>.png
   exports/<date_time>/     one folder per export
 ```
+
+A project made by an earlier version of the application is upgraded when it is opened,
+after a copy of its database is kept beside it. The earlier version can still open that
+copy; it refuses the upgraded file.
 
 - **The source file is pinned.** The project records the GeoPackage's path and SHA-256.
   When the file at that path changes or disappears, a banner says so, and the project can
@@ -117,8 +125,8 @@ project/
 
 | File | Contents |
 |---|---|
-| `annotations_<layer>.csv` | one row per record with an answer or a screenshot: category and its label, first category, number of revisions, reference label, notes, annotator, times, screenshot paths and SHA-256, the source file and its SHA-256, and every source attribute as `gpkg_<column>` |
-| `history_<layer>.csv` | every saved revision, in order |
+| `annotations_<layer>.csv` | one row per record with an answer or a screenshot: category and its label, first category, number of revisions, reference label, the date of the reference imagery and whether it was recorded, not shown or not recorded, notes, annotator, times, screenshot paths and SHA-256, the source file and its SHA-256, and every source attribute as `gpkg_<column>` |
+| `history_<layer>.csv` | every saved revision, in order, with the moment the record was opened before it |
 | `annotations.gpkg` | one point layer per annotated layer, `<layer>_annotations`, with the answer and the source attributes, for QGIS |
 | `report.html` | each record with its two screenshots side by side, grouped by category, with counts |
 

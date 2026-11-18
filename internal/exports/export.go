@@ -228,9 +228,26 @@ func writeCSV(path string, header []string, rows [][]string) error {
 	return nil
 }
 
+/*
+referenceDateCells splits the stored date of the reference imagery into the
+date and what its absence means: the reference map showed none, or nobody
+wrote it down.
+*/
+func referenceDateCells(d string) (date, status string) {
+	switch d {
+	case "":
+		return "", "not recorded"
+	case annotation.ReferenceDateNotShown:
+		return "", "not shown"
+	default:
+		return d, "recorded"
+	}
+}
+
 func writeCurrentCSV(path string, ld layerData, labels map[string]string, info annotation.Info) error {
 	header := []string{"layer", "fid", "record_id", "record_name", "lon", "lat", "category", "category_label",
-		"first_category", "revisions", "reference_label", "notes", "annotator", "created_at", "updated_at",
+		"first_category", "revisions", "reference_label", "reference_imagery_date", "reference_imagery_date_status",
+		"notes", "annotator", "created_at", "updated_at",
 		"source_image", "source_image_sha256", "reference_image", "reference_image_sha256",
 		"source_gpkg", "source_gpkg_sha256"}
 	for _, c := range ld.columns {
@@ -241,10 +258,12 @@ func writeCurrentCSV(path string, ld layerData, labels map[string]string, info a
 		lon, lat := r.position()
 		row := []string{ld.name, strconv.FormatInt(r.fid, 10)}
 		if a := r.ann; a != nil {
+			date, status := referenceDateCells(a.ReferenceDate)
 			row = append(row, a.RecordID, a.RecordName, floatCell(lon), floatCell(lat), a.Category, labels[a.Category],
-				a.FirstCategory, strconv.Itoa(r.revisions), a.ReferenceLabel, a.Notes, a.Annotator, a.CreatedAt, a.UpdatedAt)
+				a.FirstCategory, strconv.Itoa(r.revisions), a.ReferenceLabel, date, status, a.Notes, a.Annotator,
+				a.CreatedAt, a.UpdatedAt)
 		} else {
-			row = append(row, "", "", floatCell(lon), floatCell(lat), "", "", "", "0", "", "", "", "", "")
+			row = append(row, "", "", floatCell(lon), floatCell(lat), "", "", "", "0", "", "", "", "", "", "", "")
 		}
 		sp, ss := imageCells(r.src)
 		rp, rs := imageCells(r.ref)
@@ -269,13 +288,19 @@ func idCell(id *int64) string {
 }
 
 func writeHistoryCSV(path string, ld layerData, labels map[string]string) error {
-	header := []string{"layer", "fid", "revision", "category", "category_label", "reference_label", "notes",
-		"annotator", "source_image_id", "reference_image_id", "saved_at"}
+	header := []string{"layer", "fid", "revision", "category", "category_label", "reference_label",
+		"reference_imagery_date", "reference_imagery_date_status", "notes", "annotator", "source_image_id",
+		"reference_image_id", "opened_at", "saved_at"}
 	var rows [][]string
 	for _, h := range ld.history {
+		date, status := referenceDateCells(h.ReferenceDate)
+		opened := ""
+		if h.OpenedAt != nil {
+			opened = *h.OpenedAt
+		}
 		rows = append(rows, []string{ld.name, strconv.FormatInt(h.FID, 10), strconv.Itoa(h.Revision), h.Category,
-			labels[h.Category], h.ReferenceLabel, h.Notes, h.Annotator, idCell(h.SourceImageID),
-			idCell(h.ReferenceImageID), h.SavedAt})
+			labels[h.Category], h.ReferenceLabel, date, status, h.Notes, h.Annotator, idCell(h.SourceImageID),
+			idCell(h.ReferenceImageID), opened, h.SavedAt})
 	}
 	return writeCSV(path, header, rows)
 }
@@ -287,6 +312,8 @@ var annotationGpkgColumns = []gpkg.Column{
 	{Name: "first_category", Type: "TEXT"},
 	{Name: "revisions", Type: "INTEGER"},
 	{Name: "reference_label", Type: "TEXT"},
+	{Name: "reference_imagery_date", Type: "TEXT"},
+	{Name: "reference_imagery_date_status", Type: "TEXT"},
 	{Name: "notes", Type: "TEXT"},
 	{Name: "annotator", Type: "TEXT"},
 	{Name: "updated_at", Type: "DATETIME"},
@@ -323,10 +350,11 @@ func writeGeoPackage(path string, all []layerData, labels map[string]string, inf
 			}
 			vals := []any{r.fid}
 			if a := r.ann; a != nil {
+				date, status := referenceDateCells(a.ReferenceDate)
 				vals = append(vals, a.Category, labels[a.Category], a.FirstCategory, r.revisions,
-					a.ReferenceLabel, a.Notes, a.Annotator, a.UpdatedAt)
+					a.ReferenceLabel, date, status, a.Notes, a.Annotator, a.UpdatedAt)
 			} else {
-				vals = append(vals, "", "", "", 0, "", "", "", nil)
+				vals = append(vals, "", "", "", 0, "", "", "", "", "", nil)
 			}
 			sp, _ := imageCells(r.src)
 			rp, _ := imageCells(r.ref)

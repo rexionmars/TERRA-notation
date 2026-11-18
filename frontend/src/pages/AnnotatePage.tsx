@@ -20,6 +20,7 @@ import {
 } from "@/lib/format"
 import { googlePin, googleSatellite, googleStreetView } from "@/lib/links"
 import { readStored, usePersisted, writeStored } from "@/lib/persist"
+import { normalizeReferenceDate, REFERENCE_DATE_NOT_SHOWN } from "@/lib/referenceDate"
 import { visibleRows, type ListOrder, type StatusFilter } from "@/lib/recordList"
 import type {
   ExportResult,
@@ -82,7 +83,12 @@ const emptyLayer: LayerSettings = {
   info_columns: [],
   hidden_columns: [],
 }
-const emptyForm: FormState = { category: "", reference_label: "", notes: "" }
+const emptyForm: FormState = {
+  category: "",
+  reference_label: "",
+  reference_date: "",
+  notes: "",
+}
 
 /*
   A pasted location this close to a record is that record: a coordinate copied
@@ -221,6 +227,8 @@ export function AnnotatePage({
   const [form, setForm] = useState<FormState>(emptyForm)
   const [dirty, setDirty] = useState(false)
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
+  // When the open record was opened, sent with each save of it.
+  const openedAt = useRef(new Date())
 
   const [sourceTab, setSourceTab] = useState<"map" | "image">("map")
   const [activeSide, setActiveSide] = useState<Side>("reference")
@@ -435,6 +443,7 @@ export function AnnotatePage({
       return
     }
     const n = ++recordRequest.current
+    openedAt.current = new Date()
     setSourceTab("map")
     setRecord(null)
     setForm(emptyForm)
@@ -447,6 +456,7 @@ export function AnnotatePage({
         setForm({
           category: r.annotation?.category ?? "",
           reference_label: r.annotation?.reference_label ?? "",
+          reference_date: r.annotation?.reference_date ?? "",
           notes: r.annotation?.notes ?? "",
         })
       })
@@ -462,9 +472,26 @@ export function AnnotatePage({
 
   const save = async (): Promise<boolean> => {
     if (!table || fid === null || !dirty) return true
+    const date =
+      form.reference_date === REFERENCE_DATE_NOT_SHOWN
+        ? form.reference_date
+        : normalizeReferenceDate(form.reference_date)
+    if (date === null) {
+      setError(
+        `“${form.reference_date}” is not a date. Write the date of the reference imagery as 2023-03-14, 2023-03 or 2023.`
+      )
+      return false
+    }
     setBusy(true)
     try {
-      const r = await api.saveAnnotation({ layer: table.layer, fid, ...form })
+      const r = await api.saveAnnotation({
+        layer: table.layer,
+        fid,
+        ...form,
+        reference_date: date,
+        opened_at: openedAt.current.toISOString(),
+      })
+      setForm((f) => ({ ...f, reference_date: date }))
       setRecord(r)
       setDirty(false)
       updateSummary(table.layer, fid, r)

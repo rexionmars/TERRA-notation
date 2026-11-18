@@ -127,6 +127,8 @@ export interface Annotation {
   category: string
   first_category: string
   reference_label: string
+  /** YYYY, YYYY-MM or YYYY-MM-DD; "not shown"; "" when not recorded */
+  reference_date: string
   notes: string
   annotator: string
   created_at: string
@@ -153,10 +155,13 @@ export interface HistoryEntry {
   revision: number
   category: string
   reference_label: string
+  reference_date: string
   notes: string
   annotator: string
   source_image_id: number | null
   reference_image_id: number | null
+  /** when the record was opened before this save; null before it was kept */
+  opened_at: string | null
   saved_at: string
 }
 
@@ -165,7 +170,10 @@ export interface Draft {
   fid: number
   category: string
   reference_label: string
+  reference_date: string
   notes: string
+  /** RFC 3339 */
+  opened_at: string
 }
 
 export interface NearRecord {

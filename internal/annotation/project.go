@@ -39,8 +39,11 @@ const DBFile = "annotations.sqlite"
 // ImagesDir is the folder, inside the project folder, that holds screenshots.
 const ImagesDir = "images"
 
-const schemaVersion = "1"
-
+/*
+schema is the first version of the project database. A new project is created
+with it and then taken through every migration (migrate.go), so a new project
+and an upgraded one end with the same tables.
+*/
 const schema = `
 CREATE TABLE project (
   key TEXT PRIMARY KEY,
@@ -268,7 +271,7 @@ func (p *Project) init(name string, source Source, settings Settings) error {
 	src, _ := json.Marshal(source)
 	set, _ := json.Marshal(settings)
 	for k, v := range map[string]string{
-		"schema_version": schemaVersion,
+		"schema_version": "1",
 		"name":           name,
 		"created_at":     now(),
 		"source":         string(src),
@@ -277,6 +280,9 @@ func (p *Project) init(name string, source Source, settings Settings) error {
 		if _, err := tx.Exec(`INSERT INTO project (key, value) VALUES (?, ?)`, k, v); err != nil {
 			return fmt.Errorf("create project database: %w", err)
 		}
+	}
+	if err := migrateTx(tx, 1); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("create project database: %w", err)
@@ -300,9 +306,9 @@ func Open(dir string) (*Project, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("open project database: %w", err)
 	}
-	if v != schemaVersion {
+	if err := p.migrate(v); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("the project was written with schema version %s; this version of the application reads %s", v, schemaVersion)
+		return nil, err
 	}
 	return p, nil
 }

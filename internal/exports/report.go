@@ -48,6 +48,7 @@ type reportCard struct {
 	Category      string
 	FirstCategory string
 	Reference     string
+	ImageryDate   string
 	Notes         string
 	Position      string
 	Revisions     int
@@ -121,6 +122,7 @@ var reportTemplate = template.Must(template.New("report").Parse(`<!doctype html>
     <dt>Category</dt><dd>{{if .Category}}{{.Category}}{{else}}no category{{end}}</dd>
     {{if .FirstCategory}}<dt>First category</dt><dd>{{.FirstCategory}}</dd>{{end}}
     {{if .Reference}}<dt>On the reference map</dt><dd>{{.Reference}}</dd>{{end}}
+    {{if .ImageryDate}}<dt>Date of the reference imagery</dt><dd>{{.ImageryDate}}</dd>{{end}}
     {{if .Notes}}<dt>Notes</dt><dd>{{.Notes}}</dd>{{end}}
     {{if .Position}}<dt>Position in the layer</dt><dd>{{.Position}}</dd>{{end}}
     {{if .Saved}}<dt>Saved</dt><dd>{{.Saved}} ({{.Revisions}} {{if eq .Revisions 1}}revision{{else}}revisions{{end}})</dd>{{end}}
@@ -202,6 +204,11 @@ func writeReport(file, exportDir, projectDir string, all []layerData, labels map
 					card.FirstCategory = labels[a.FirstCategory]
 				}
 				card.Reference, card.Notes, card.Revisions = a.ReferenceLabel, a.Notes, r.revisions
+				if date, status := referenceDateCells(a.ReferenceDate); date != "" {
+					card.ImageryDate = date
+				} else {
+					card.ImageryDate = status
+				}
 				card.Saved = formatTime(a.UpdatedAt)
 				if a.Annotator != "" {
 					card.Saved += " by " + a.Annotator

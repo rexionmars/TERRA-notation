@@ -74,8 +74,8 @@ exports/<local date_time>/
 | Table | Holds |
 |---|---|
 | `project` | key-value rows: schema version, name, creation time, the source file (path, SHA-256, size) and the settings as JSON |
-| `annotation` | the current answer per `(layer, fid)`: category, `first_category`, reference label, notes, annotator, times, revision, and a snapshot of the record's id, name and position read from the GeoPackage at save time |
-| `annotation_history` | one row per saved revision, with the screenshots current at that moment; triggers abort any `UPDATE` or `DELETE` |
+| `annotation` | the current answer per `(layer, fid)`: category, `first_category`, reference label, the date of the reference imagery, notes, annotator, times, revision, and a snapshot of the record's id, name and position read from the GeoPackage at save time |
+| `annotation_history` | one row per saved revision, with the screenshots current at that moment and `opened_at`, when the page opened the record before that save; triggers abort any `UPDATE` or `DELETE` |
 | `image` | one row per screenshot: path, SHA-256, size in bytes and pixels, origin (map, screen region, clipboard, file), capture time, and `removed_at` once it is no longer current |
 
 Rules the code keeps:
@@ -95,6 +95,16 @@ Rules the code keeps:
   under a `source_before_<time>` key.
 - **Categories in use cannot be removed.** A category that any current answer or history
   row uses can be relabelled but not deleted, since those answers would lose their meaning.
+- **The date of the reference imagery** is stored as the reference map gives it: `YYYY`,
+  `YYYY-MM` or `YYYY-MM-DD`, `not shown` when the map gave none, and empty when nobody
+  wrote it down. Exports split it into a date and that status, so a reader of the CSV
+  never meets the words in a date column.
+- **Upgrades.** `project.schema_version` says which version wrote the file.
+  `internal/annotation/migrate.go` lists the changes from each version to the next; they
+  only add tables, columns and triggers. A new project is made at version 1 and taken
+  through every change, so new and upgraded projects end with the same tables. Before an
+  upgrade the database is copied to `annotations.schema-<n>.sqlite`. A project from a
+  newer build is refused.
 - **One connection.** The database is opened with `SetMaxOpenConns(1)`, because one person
   writes and SQLite serialises writers anyway. A transaction therefore holds the only
   connection, and code inside one must not call a method that opens another query.

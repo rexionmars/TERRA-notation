@@ -1,4 +1,5 @@
 import { formatTime } from "@/lib/format"
+import { normalizeReferenceDate, REFERENCE_DATE_NOT_SHOWN } from "@/lib/referenceDate"
 import type { Category, HistoryEntry, Entry } from "@/lib/types"
 import { Check } from "@/components/icons"
 import { Button, cn, Field, inputClass, Kbd } from "@/components/ui"
@@ -6,7 +7,15 @@ import { Button, cn, Field, inputClass, Kbd } from "@/components/ui"
 export interface FormState {
   category: string
   reference_label: string
+  /** as typed; normalised when the field is left and before a save */
+  reference_date: string
   notes: string
+}
+
+function dateText(d: string): string {
+  if (d === "") return "no date recorded"
+  if (d === REFERENCE_DATE_NOT_SHOWN) return "no date shown"
+  return d
 }
 
 /** The judgement about one record. */
@@ -37,6 +46,8 @@ export function AnnotationForm({
 }) {
   const a = record?.annotation
   const label = (id: string) => categories.find((c) => c.id === id)?.label ?? id
+  const notShown = form.reference_date === REFERENCE_DATE_NOT_SHOWN
+  const dateInvalid = !notShown && normalizeReferenceDate(form.reference_date) === null
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(240px,320px)_1fr] gap-4">
       <div
@@ -100,6 +111,55 @@ export function AnnotationForm({
             onChange={(e) => onChange({ ...form, reference_label: e.target.value })}
           />
         </Field>
+        <div className="flex flex-col gap-1">
+          <span className="text-label text-muted-foreground">
+            Date of the reference imagery
+          </span>
+          <div className="flex items-center gap-3">
+            <input
+              className={cn(
+                inputClass,
+                "telemetry w-36",
+                dateInvalid && "border-warning"
+              )}
+              aria-label="Date of the reference imagery"
+              aria-invalid={dateInvalid}
+              disabled={notShown}
+              value={notShown ? "" : form.reference_date}
+              placeholder={notShown ? "not shown" : "2023-03-14 or 2023-03"}
+              onChange={(e) => onChange({ ...form, reference_date: e.target.value })}
+              onBlur={() => {
+                const d = normalizeReferenceDate(form.reference_date)
+                if (d !== null && d !== form.reference_date)
+                  onChange({ ...form, reference_date: d })
+              }}
+            />
+            <label className="flex items-center gap-1.5 text-label text-foreground">
+              <input
+                type="checkbox"
+                className="accent-primary"
+                checked={notShown}
+                onChange={(e) =>
+                  onChange({
+                    ...form,
+                    reference_date: e.target.checked ? REFERENCE_DATE_NOT_SHOWN : "",
+                  })
+                }
+              />
+              The reference shows no date
+            </label>
+          </div>
+          <span
+            className={cn(
+              "text-meta",
+              dateInvalid ? "text-warning" : "text-muted-foreground"
+            )}
+          >
+            {dateInvalid
+              ? "Write it as 2023-03-14, 2023-03 or 2023 (14/03/2023 is turned round)."
+              : "Street View gives “Image capture”; Google Earth gives the date at its foot."}
+          </span>
+        </div>
         <label className="flex min-h-0 flex-1 flex-col gap-1">
           <span className="text-label text-muted-foreground">Notes</span>
           <textarea
@@ -151,6 +211,7 @@ export function AnnotationForm({
                 </span>{" "}
                 {h.category ? label(h.category) : "no category"}
                 {h.reference_label && <> · map: {h.reference_label}</>}
+                {h.reference_date && <> · imagery: {dateText(h.reference_date)}</>}
                 {h.notes && <> · {h.notes}</>}
               </li>
             ))}

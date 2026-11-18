@@ -50,7 +50,8 @@ func TestAnExportCarriesTheAnswersTheHistoryAndTheSourceAttributes(t *testing.T)
 	if _, err := p.Save(annotation.Draft{Layer: "schools", FID: 1, Category: "present"}, snap); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Save(annotation.Draft{Layer: "schools", FID: 1, Category: "other_use", ReferenceLabel: "Restaurante, vírgula"}, snap); err != nil {
+	if _, err := p.Save(annotation.Draft{Layer: "schools", FID: 1, Category: "other_use", ReferenceLabel: "Restaurante, vírgula",
+		ReferenceDate: annotation.ReferenceDateNotShown}, snap); err != nil {
 		t.Fatal(err)
 	}
 	var b bytes.Buffer
@@ -86,6 +87,11 @@ func TestAnExportCarriesTheAnswersTheHistoryAndTheSourceAttributes(t *testing.T)
 	if first[col["category"]] != "other_use" || first[col["first_category"]] != "present" ||
 		first[col["reference_label"]] != "Restaurante, vírgula" || first[col["gpkg_name"]] != "ESCOLA A" {
 		t.Fatalf("row = %v", first)
+	}
+	// A date the reference map did not show is an empty date with its reason.
+	if first[col["reference_imagery_date"]] != "" || first[col["reference_imagery_date_status"]] != "not shown" {
+		t.Fatalf("reference imagery date = %q, %q", first[col["reference_imagery_date"]],
+			first[col["reference_imagery_date_status"]])
 	}
 	if rows[2][col["reference_image"]] == "" || rows[2][col["category"]] != "" {
 		t.Fatalf("a record with only a screenshot is exported as %v", rows[2])

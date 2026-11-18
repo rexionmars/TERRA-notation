@@ -10,6 +10,7 @@ export namespace annotation {
 	    category: string;
 	    first_category: string;
 	    reference_label: string;
+	    reference_date: string;
 	    notes: string;
 	    annotator: string;
 	    created_at: string;
@@ -31,6 +32,7 @@ export namespace annotation {
 	        this.category = source["category"];
 	        this.first_category = source["first_category"];
 	        this.reference_label = source["reference_label"];
+	        this.reference_date = source["reference_date"];
 	        this.notes = source["notes"];
 	        this.annotator = source["annotator"];
 	        this.created_at = source["created_at"];
@@ -59,7 +61,9 @@ export namespace annotation {
 	    fid: number;
 	    category: string;
 	    reference_label: string;
+	    reference_date: string;
 	    notes: string;
+	    opened_at: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Draft(source);
@@ -71,7 +75,9 @@ export namespace annotation {
 	        this.fid = source["fid"];
 	        this.category = source["category"];
 	        this.reference_label = source["reference_label"];
+	        this.reference_date = source["reference_date"];
 	        this.notes = source["notes"];
+	        this.opened_at = source["opened_at"];
 	    }
 	}
 	export class Image {
@@ -148,10 +154,12 @@ export namespace annotation {
 	    revision: number;
 	    category: string;
 	    reference_label: string;
+	    reference_date: string;
 	    notes: string;
 	    annotator: string;
 	    source_image_id?: number;
 	    reference_image_id?: number;
+	    opened_at?: string;
 	    saved_at: string;
 	
 	    static createFrom(source: any = {}) {
@@ -163,10 +171,12 @@ export namespace annotation {
 	        this.revision = source["revision"];
 	        this.category = source["category"];
 	        this.reference_label = source["reference_label"];
+	        this.reference_date = source["reference_date"];
 	        this.notes = source["notes"];
 	        this.annotator = source["annotator"];
 	        this.source_image_id = source["source_image_id"];
 	        this.reference_image_id = source["reference_image_id"];
+	        this.opened_at = source["opened_at"];
 	        this.saved_at = source["saved_at"];
 	    }
 	}
