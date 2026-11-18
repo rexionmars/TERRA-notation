@@ -199,6 +199,26 @@ export namespace annotation {
 	        this.source = source["source"];
 	    }
 	}
+	export class Origin {
+	    dir: string;
+	    name: string;
+	    created_at: string;
+	    annotator: string;
+	    sample_id?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Origin(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.dir = source["dir"];
+	        this.name = source["name"];
+	        this.created_at = source["created_at"];
+	        this.annotator = source["annotator"];
+	        this.sample_id = source["sample_id"];
+	    }
+	}
 	export class LayerSettings {
 	    name_column: string;
 	    id_column: string;
@@ -278,6 +298,7 @@ export namespace annotation {
 	    current_sha256: string;
 	    settings: Settings;
 	    sampled_layers: string[];
+	    second_reading_of?: Origin;
 	
 	    static createFrom(source: any = {}) {
 	        return new Info(source);
@@ -293,6 +314,7 @@ export namespace annotation {
 	        this.current_sha256 = source["current_sha256"];
 	        this.settings = this.convertValues(source["settings"], Settings);
 	        this.sampled_layers = source["sampled_layers"];
+	        this.second_reading_of = this.convertValues(source["second_reading_of"], Origin);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -314,26 +336,7 @@ export namespace annotation {
 		}
 	}
 	
-	export class Origin {
-	    dir: string;
-	    name: string;
-	    created_at: string;
-	    annotator: string;
-	    sample_id?: number;
 	
-	    static createFrom(source: any = {}) {
-	        return new Origin(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.dir = source["dir"];
-	        this.name = source["name"];
-	        this.created_at = source["created_at"];
-	        this.annotator = source["annotator"];
-	        this.sample_id = source["sample_id"];
-	    }
-	}
 	export class Pace {
 	    timed: number;
 	    median_seconds: number;
@@ -453,6 +456,26 @@ export namespace annotation {
 		}
 	}
 	
+	export class SecondReading {
+	    dir: string;
+	    name: string;
+	    annotator: string;
+	    layer: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SecondReading(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.dir = source["dir"];
+	        this.name = source["name"];
+	        this.annotator = source["annotator"];
+	        this.layer = source["layer"];
+	        this.size = source["size"];
+	    }
+	}
 	
 	
 	
@@ -481,6 +504,66 @@ export namespace annotation {
 
 export namespace exports {
 	
+	export class AgreementLayer {
+	    layer: string;
+	    records: number;
+	    pairs: number;
+	    agreeing: number;
+	    share: number;
+	    low: number;
+	    high: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgreementLayer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.layer = source["layer"];
+	        this.records = source["records"];
+	        this.pairs = source["pairs"];
+	        this.agreeing = source["agreeing"];
+	        this.share = source["share"];
+	        this.low = source["low"];
+	        this.high = source["high"];
+	    }
+	}
+	export class AgreementResult {
+	    dir: string;
+	    files: string[];
+	    second: string;
+	    layers: AgreementLayer[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AgreementResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.dir = source["dir"];
+	        this.files = source["files"];
+	        this.second = source["second"];
+	        this.layers = this.convertValues(source["layers"], AgreementLayer);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class LayerResult {
 	    layer: string;
 	    records: number;
@@ -984,6 +1067,36 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class SecondReadingMade {
+	    dir: string;
+	    name: string;
+	    records: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SecondReadingMade(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.dir = source["dir"];
+	        this.name = source["name"];
+	        this.records = source["records"];
+	    }
+	}
+	export class SecondReadingSource {
+	    records: number;
+	    from_sample: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SecondReadingSource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.records = source["records"];
+	        this.from_sample = source["from_sample"];
+	    }
 	}
 
 }

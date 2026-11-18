@@ -5,6 +5,7 @@
 import * as App from "../../wailsjs/go/main/App"
 import type { annotation, main } from "../../wailsjs/go/models"
 import type {
+  AgreementResult,
   BBox,
   ContextFeatures,
   Draft,
@@ -22,6 +23,9 @@ import type {
   Sample,
   SampleDesign,
   SampleState,
+  SecondReading,
+  SecondReadingMade,
+  SecondReadingSource,
   Settings,
   Side,
   Summary,
@@ -91,6 +95,12 @@ export const api = {
   drawSample: (d: SampleDesign, replace: boolean) =>
     as<SampleState>(App.DrawSample(d as unknown as annotation.SampleDesign, replace)),
   currentSample: (layer: string) => as<SampleState>(App.CurrentSample(layer)),
+
+  secondReadingSource: (layer: string) =>
+    as<SecondReadingSource>(App.SecondReadingSource(layer)),
+  createSecondReading: (r: SecondReading) =>
+    as<SecondReadingMade>(App.CreateSecondReading(r as annotation.SecondReading)),
+  compareSecondReading: () => as<AgreementResult | null>(App.CompareSecondReading()),
 }
 
 /** The text of a failure, whatever shape it reached the page in. */

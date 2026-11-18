@@ -36,6 +36,8 @@ function StrataTable({ sample }: { sample: Sample }) {
 
 function describeDesign(s: Sample): string {
   const d = s.design
+  if (d.kind === "second_reading")
+    return `The ${formatCount(s.strata[0]?.drawn ?? 0)} records drawn for a second reading from the ${formatCount(s.population)} answered records of ${d.origin?.name ?? "the first project"}.`
   const pop = d.condition
     ? `the ${formatCount(s.population)} records where ${d.condition}`
     : `all ${formatCount(s.population)} records`
@@ -122,9 +124,11 @@ export function SampleDialog({
         wide
         footer={
           <>
-            <Button size="commit" tone="ghost" onClick={() => setDrawing(true)}>
-              Draw another sample…
-            </Button>
+            {current.design.kind !== "second_reading" && (
+              <Button size="commit" tone="ghost" onClick={() => setDrawing(true)}>
+                Draw another sample…
+              </Button>
+            )}
             <Button size="commit" onClick={onShowSample}>
               Show it in the list
             </Button>

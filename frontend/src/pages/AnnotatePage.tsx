@@ -59,6 +59,7 @@ import { CaretDown, CaretRight, Copy, Warning } from "@/components/icons"
 import { MapTools } from "@/components/MapTools"
 import { RecordList } from "@/components/RecordList"
 import { SampleDialog } from "@/components/SampleDialog"
+import { SecondReadingDialog } from "@/components/SecondReadingDialog"
 import { SettingsDialog } from "@/components/SettingsDialog"
 import { Slot } from "@/components/Slot"
 import { BarButton, PathStep, TitleBar } from "@/components/TitleBar"
@@ -261,6 +262,7 @@ export function AnnotatePage({
   const [compare, setCompare] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sampleOpen, setSampleOpen] = useState(false)
+  const [secondReadingOpen, setSecondReadingOpen] = useState(false)
   // The open layer's sample, with the pace of annotation on the layer.
   const [sampleState, setSampleState] = useState<SampleState | null>(null)
   const [exported, setExported] = useState<ExportResult | null>(null)
@@ -315,10 +317,12 @@ export function AnnotatePage({
     }
   }, [layer?.name])
   const sampleFids = sampleState?.sample ? sampleState.fids : null
-  // A filter on the sample means nothing on a layer without one.
+  // A filter or an order by the sample means nothing on a layer without one.
   useEffect(() => {
-    if (sampleState && !sampleState.sample && status.startsWith("sample"))
-      setStatus("all")
+    if (sampleState && !sampleState.sample) {
+      if (status.startsWith("sample")) setStatus("all")
+      if (order === "sample") setOrder("fid")
+    }
   }, [sampleState])
 
   // Which records have an answer, for every point layer, so the map can ring them.
@@ -923,7 +927,15 @@ export function AnnotatePage({
 
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {})
   keyRef.current = (e) => {
-    if (compare || settingsOpen || sampleOpen || exported || relinkPath) return
+    if (
+      compare ||
+      settingsOpen ||
+      sampleOpen ||
+      secondReadingOpen ||
+      exported ||
+      relinkPath
+    )
+      return
     const mod = e.metaKey || e.ctrlKey
     const k = e.key.toLowerCase()
     if (mod && k === "s") {
@@ -1175,6 +1187,9 @@ export function AnnotatePage({
         >
           Sample
         </BarButton>
+        <BarButton disabled={!layer} onClick={() => setSecondReadingOpen(true)}>
+          Second reading
+        </BarButton>
         <BarButton onClick={() => setSettingsOpen(true)}>Settings</BarButton>
         <BarButton disabled={busy} onClick={() => void runExport()}>
           Export
@@ -1262,6 +1277,7 @@ export function AnnotatePage({
               >
                 <option value="fid">Feature id</option>
                 <option value="random">Random ({settings.seed})</option>
+                {sampleFids && <option value="sample">Sample order</option>}
               </select>
             </div>
             <details className="group">
@@ -1658,18 +1674,28 @@ export function AnnotatePage({
             setSampleState(s)
             setSampleOpen(false)
             setStatus("sample")
-            setOrder("random")
+            setOrder("sample")
             openSampleStart(s.fids)
             flash(`Sample drawn: ${formatCount(s.fids.length)} records`)
             void api.currentProject().then(onProjectChange)
           }}
           onShowSample={() => {
             setStatus("sample")
-            setOrder("random")
+            setOrder("sample")
             setSampleOpen(false)
             openSampleStart(sampleState.fids)
           }}
           onClose={() => setSampleOpen(false)}
+        />
+      )}
+
+      {secondReadingOpen && layer && (
+        <SecondReadingDialog
+          projectName={info.name}
+          annotator={settings.annotator}
+          layer={layer.name}
+          origin={info.second_reading_of}
+          onClose={() => setSecondReadingOpen(false)}
         />
       )}
 

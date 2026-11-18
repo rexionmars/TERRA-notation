@@ -116,6 +116,16 @@ describe("record list", () => {
     expect(ids("sample_passed_over")).toEqual([4])
     expect([...passedOver(sample, summaries)]).toEqual([4])
   })
+  it("orders the sample as it was drawn, the rest after it by feature id", () => {
+    const ids = visibleRows(
+      rows,
+      summaries,
+      q({ order: "sample", sample: [4, 2, 1] }),
+      [0],
+      1
+    ).map((r) => r.fid)
+    expect(ids).toEqual([4, 2, 1, 3, 5])
+  })
   it("keeps the random order when the list is narrowed", () => {
     const all = visibleRows(rows, summaries, q({ order: "random" }), [0], 48213).map(
       (r) => r.fid

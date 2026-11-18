@@ -10,12 +10,20 @@ export function CloseProject() {
   return window['go']['main']['App']['CloseProject']();
 }
 
+export function CompareSecondReading() {
+  return window['go']['main']['App']['CompareSecondReading']();
+}
+
 export function ContextFeatures(arg1, arg2) {
   return window['go']['main']['App']['ContextFeatures'](arg1, arg2);
 }
 
 export function CreateProject(arg1) {
   return window['go']['main']['App']['CreateProject'](arg1);
+}
+
+export function CreateSecondReading(arg1) {
+  return window['go']['main']['App']['CreateSecondReading'](arg1);
 }
 
 export function CurrentProject() {
@@ -120,6 +128,10 @@ export function SaveAnnotation(arg1) {
 
 export function SaveMapCapture(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SaveMapCapture'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function SecondReadingSource(arg1) {
+  return window['go']['main']['App']['SecondReadingSource'](arg1);
 }
 
 export function Summaries(arg1) {

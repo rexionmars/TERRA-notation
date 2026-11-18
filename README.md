@@ -102,6 +102,25 @@ The first time a region is captured, macOS asks for Screen Recording permission 
 application (System Settings, Privacy & Security, Screen Recording). Without it the
 capture shows the desktop and no windows.
 
+## Reading records again
+
+How much an answer depends on who gives it, or when, is measured with a **second
+reading** (Second reading, in the top bar). It makes a project of its own in a new folder:
+the same GeoPackage, categories, hidden columns and seed, no answers, and as its sample a
+number of records drawn at random from those answered here (from the sample's, when the
+layer has one). Another person opens it, or the same one some weeks later, and works
+through its sample without the first answers in view. On another computer its GeoPackage
+may need locating once.
+
+Back in the first project, **Compare** in the same window asks for the second reading's
+folder, reads it without changing it, and writes into a new folder of `exports/`
+`agreement_<layer>.csv` (each record with both first answers and both current ones),
+`agreement_matrix_<layer>.csv` (the confusion table, first reading by second) and
+`agreement.html`: the share of records with the same first answer and its 95 % Wilson
+interval, each category's specific agreement, the table, and the list of disagreements.
+First answers are compared because they are the ones given without the other reading in
+view. Kappa is not computed; the confusion table holds what any coefficient needs.
+
 ## What a project folder holds
 
 ```

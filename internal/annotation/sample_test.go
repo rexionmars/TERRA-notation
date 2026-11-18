@@ -2,6 +2,7 @@ package annotation
 
 import (
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -179,5 +180,55 @@ func TestThePaceIsTheMedianTimeToAFirstAnswer(t *testing.T) {
 	}
 	if pace.Timed != 3 || pace.MedianSeconds < 59 || pace.MedianSeconds > 62 {
 		t.Fatalf("pace = %+v", pace)
+	}
+}
+
+func TestASecondReadingDrawsFromTheAnsweredRecordsOfTheSample(t *testing.T) {
+	p, _ := newProject(t)
+	fids, pop := layerOf(20, 20)
+	s, err := p.DrawSample(SampleDesign{Layer: "schools", Size: 5}, fids, pop, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recs, _ := p.SampleRecords(s.ID)
+	// Two sample records and one outside the sample have a category.
+	in := map[int64]bool{}
+	for _, r := range recs {
+		in[r.FID] = true
+	}
+	var outside int64
+	for _, f := range fids {
+		if !in[f] {
+			outside = f
+			break
+		}
+	}
+	for _, f := range []int64{recs[0].FID, recs[1].FID, outside} {
+		if _, err := p.Save(Draft{Layer: "schools", FID: f, Category: "present"}, Snapshot{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cands, _, err := p.SecondReadingCandidates("schools")
+	if err != nil || len(cands) != 2 {
+		t.Fatalf("candidates = %v, %v", cands, err)
+	}
+	q, err := p.CreateSecondReading(SecondReading{Dir: filepath.Join(t.TempDir(), "again"), Annotator: "B",
+		Layer: "schools", Size: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := q.Dir()
+	_ = q.Close()
+	r, err := OpenReadOnly(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+	cur, err := r.CurrentSample("schools")
+	if err != nil || cur.Design.Kind != KindSecondReading || cur.Strata[0].Drawn != 2 {
+		t.Fatalf("second reading sample = %+v, %v", cur, err)
+	}
+	if _, err := r.Save(Draft{Layer: "schools", FID: 1, Category: "present"}, Snapshot{}); err == nil {
+		t.Fatal("a project opened read-only took an answer")
 	}
 }

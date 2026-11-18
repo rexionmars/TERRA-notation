@@ -281,48 +281,59 @@ func (p *Project) DrawSample(d SampleDesign, layerFIDs []int64, population []Mem
 	if err != nil {
 		return nil, err
 	}
+	id, err := p.keepSample(d, settings.Seed, len(population), strata, records, replace)
+	if err != nil {
+		return nil, err
+	}
+	return p.sampleByID(id)
+}
+
+// keepSample writes a drawn sample, replacing the layer's current one when
+// replace is true.
+func (p *Project) keepSample(d SampleDesign, seed int64, population int, strata []Stratum, records []SampleRecord,
+	replace bool) (int64, error) {
 	tx, err := p.db.Begin()
 	if err != nil {
-		return nil, fmt.Errorf("draw the sample: %w", err)
+		return 0, fmt.Errorf("draw the sample: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	var current sql.NullInt64
 	if err := tx.QueryRow(`SELECT id FROM sample WHERE layer = ? AND superseded_at IS NULL`, d.Layer).
 		Scan(&current); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("draw the sample: %w", err)
+		return 0, fmt.Errorf("draw the sample: %w", err)
 	}
 	t := now()
 	if current.Valid {
 		if !replace {
-			return nil, fmt.Errorf("layer %s already has a sample; replacing it keeps the old one but needs confirming", d.Layer)
+			return 0, fmt.Errorf("layer %s already has a sample; replacing it keeps the old one but needs confirming", d.Layer)
 		}
 		if _, err := tx.Exec(`UPDATE sample SET superseded_at = ? WHERE id = ?`, t, current.Int64); err != nil {
-			return nil, fmt.Errorf("draw the sample: %w", err)
+			return 0, fmt.Errorf("draw the sample: %w", err)
 		}
 	}
 	var before int
 	if err := tx.QueryRow(`SELECT count(*) FROM annotation WHERE layer = ? AND category <> ''`, d.Layer).
 		Scan(&before); err != nil {
-		return nil, fmt.Errorf("draw the sample: %w", err)
+		return 0, fmt.Errorf("draw the sample: %w", err)
 	}
 	design, _ := json.Marshal(d)
 	st, _ := json.Marshal(strata)
 	res, err := tx.Exec(`INSERT INTO sample (layer, design, seed, population, strata, created_at, answers_before)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, d.Layer, string(design), settings.Seed, len(population), string(st), t, before)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, d.Layer, string(design), seed, population, string(st), t, before)
 	if err != nil {
-		return nil, fmt.Errorf("draw the sample: %w", err)
+		return 0, fmt.Errorf("draw the sample: %w", err)
 	}
 	id, _ := res.LastInsertId()
 	for _, r := range records {
 		if _, err := tx.Exec(`INSERT INTO sample_record (sample_id, fid, stratum, draw_order) VALUES (?, ?, ?, ?)`,
 			id, r.FID, r.Stratum, r.Order); err != nil {
-			return nil, fmt.Errorf("draw the sample: %w", err)
+			return 0, fmt.Errorf("draw the sample: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("draw the sample: %w", err)
+		return 0, fmt.Errorf("draw the sample: %w", err)
 	}
-	return p.sampleByID(id)
+	return id, nil
 }
 
 const sampleColumns = `id, design, seed, population, strata, created_at, answers_before, superseded_at`

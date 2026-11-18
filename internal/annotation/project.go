@@ -162,6 +162,9 @@ type Info struct {
 	Settings      Settings `json:"settings"`
 	// SampledLayers are the layers with a current sample.
 	SampledLayers []string `json:"sampled_layers"`
+	// SecondReadingOf names the project this one reads again; nil for a
+	// project that is not a second reading.
+	SecondReadingOf *Origin `json:"second_reading_of"`
 }
 
 // DefaultCategories are offered to a new project and can be edited in it.
@@ -383,6 +386,9 @@ func (p *Project) Info() (Info, error) {
 		return info, err
 	}
 	if info.SampledLayers, err = p.SampledLayers(); err != nil {
+		return info, err
+	}
+	if info.SecondReadingOf, err = p.SecondReadingOf(); err != nil {
 		return info, err
 	}
 	current, err := HashFile(info.Source.Path)

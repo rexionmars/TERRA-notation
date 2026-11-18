@@ -93,6 +93,8 @@ export interface ProjectInfo {
   settings: Settings
   /** layers with a current sample */
   sampled_layers: string[] | null
+  /** the project this one reads again; null when it is not a second reading */
+  second_reading_of: Origin | null
 }
 
 export interface ProjectState {
@@ -284,4 +286,40 @@ export interface SampleState {
   /** the sample's records in their order */
   fids: number[]
   pace: Pace
+}
+
+export interface SecondReading {
+  dir: string
+  name: string
+  annotator: string
+  layer: string
+  size: number
+}
+
+export interface SecondReadingSource {
+  records: number
+  from_sample: boolean
+}
+
+export interface SecondReadingMade {
+  dir: string
+  name: string
+  records: number
+}
+
+export interface AgreementLayer {
+  layer: string
+  records: number
+  pairs: number
+  agreeing: number
+  share: number
+  low: number
+  high: number
+}
+
+export interface AgreementResult {
+  dir: string
+  files: string[]
+  second: string
+  layers: AgreementLayer[]
 }

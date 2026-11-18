@@ -150,6 +150,30 @@ records; drawn as a probability sample before the annotation, it estimates the l
   `opened_at`, and reports the median of the differences: a record left open over a break
   is one long time, not a slow annotator.
 
+## Second readings
+
+`internal/annotation/second_reading.go` makes a second reading project and
+`internal/exports/agreement.go` compares one with the project it was made from.
+
+- **Made from the first, not copied.** The new project gets the source path and hash, the
+  categories, the layer settings (hidden columns included) and the seed, and no answers or
+  screenshots. Its records are a sample of kind `second_reading`, whose design carries an
+  `Origin`: the first project's folder, name, creation time, annotator and sample. They
+  are the first k of `SeededOrder` over the first project's records with a category (of
+  its current sample, when the layer has one), and the list shows them in that order
+  ("Sample order"), so passed-over records mean the same as in any sample.
+- **Recognised by name and creation time,** which a copy or a move of the first project
+  keeps; a folder path would not survive one. The two must name the same GeoPackage hash,
+  or feature ids could name different records.
+- **Read, not written.** The comparison opens the second reading with `OpenReadOnly`
+  (SQLite `mode=ro`), which does not upgrade it: a second reading from another version is
+  refused with a message to open it once first.
+- **First answers.** Each record is compared by `first_category` on both sides: those are
+  the answers given without the other reading in view, and later revisions may follow a
+  talk about the disagreements. Observed agreement has a Wilson interval; each category
+  has its specific agreement, 2 n_cc / (n_c. + n_.c). Kappa is left out, and the confusion
+  table carries what any coefficient is computed from.
+
 ## The page
 
 State lives in `pages/AnnotatePage.tsx`. Logic that does not need React is in `lib/` and
@@ -317,6 +341,8 @@ was computed from is never overwritten:
   reached, since the estimate takes the unanswered ones to be like the answered ones of
   their stratum. Without a sample the shares describe the answered records only and carry
   no interval.
+- **Agreement** with a second reading goes to its own new folder,
+  `exports/<date_time>_agreement/` (see "Second readings").
 - **`report.html`:** every record grouped by category, with its two screenshots side by
   side. Image paths are relative to the export folder, so the page keeps working as long
   as the project folder is moved whole.

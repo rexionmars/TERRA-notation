@@ -19,7 +19,12 @@ export type StatusFilter =
   | "sample_passed_over"
   | `category:${string}`
 
-export type ListOrder = "fid" | "random"
+/**
+ * "sample" is the order the layer's sample was drawn in, which for a sample
+ * drawn here is the random order restricted to it, and for a second reading
+ * the order its records were drawn in; with no sample it is feature id.
+ */
+export type ListOrder = "fid" | "random" | "sample"
 
 export interface ListQuery {
   search: string
@@ -143,7 +148,14 @@ export function visibleRows(
       return v !== null && fold(String(v)).includes(needle)
     })
   })
-  if (query.order === "fid") return keep
+  if (query.order === "fid" || (query.order === "sample" && !query.sample)) return keep
+  if (query.order === "sample") {
+    const place = new Map((query.sample ?? []).map((fid, i) => [fid, i]))
+    const end = place.size
+    return keep.sort(
+      (a, b) => (place.get(a.fid) ?? end) - (place.get(b.fid) ?? end) || a.fid - b.fid
+    )
+  }
   const rank = new Map<number, number>()
   seededOrder(
     rows.map((r) => r.fid),
