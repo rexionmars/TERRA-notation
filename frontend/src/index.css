@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/*
+  Dark chrome, so the two screenshots are the brightest things on screen. The
+  categorical colours are from the Okabe and Ito palette, which stays distinct
+  for readers with colour-vision deficiency; every use of one also carries a
+  label or a shape.
+*/
+@theme {
+  --color-bg: #111113;
+  --color-panel: #18181b;
+  --color-raised: #232328;
+  --color-hover: #2c2c32;
+  --color-line: #34343b;
+  --color-text: #ececef;
+  --color-muted: #a1a1aa;
+  --color-accent: #56b4e9;
+  --color-danger: #f0845c;
+  --color-ok: #4cc9a0;
+  --color-mark: #f0e442;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Wails marks a drop target while a file is dragged over it. */
+.wails-drop-target-active {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -4px;
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 10px;
+}
+
+.maplibregl-popup-content {
+  background: var(--color-raised);
+  color: var(--color-text);
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: var(--color-raised) !important;
+  border-bottom-color: var(--color-raised) !important;
+}
