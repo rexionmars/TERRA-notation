@@ -29,6 +29,8 @@ export function InspectGeoPackage(arg1:string):Promise<Array<main.LayerSummary>>
 
 export function LoadLayer(arg1:string):Promise<gpkg.Table>;
 
+export function LogPageProblem(arg1:string):Promise<void>;
+
 export function NearestRecords(arg1:Array<string>,arg2:number,arg3:number,arg4:number):Promise<Array<main.NearRecord>>;
 
 export function OpenProject(arg1:string):Promise<main.ProjectState>;

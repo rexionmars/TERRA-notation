@@ -13,6 +13,7 @@ import { api, errorText } from "@/lib/api"
 import { BASEMAPS, LABELS_TILES, levelId } from "@/lib/basemaps"
 import { drawCrosshair, drawPastedMark } from "@/lib/capture"
 import { formatValue } from "@/lib/format"
+import { logProblem, logProblemNow } from "@/lib/pageLog"
 import type { ColumnValue } from "@/lib/types"
 
 /** A layer of the GeoPackage drawn on the map. */
@@ -113,6 +114,37 @@ function popupContent(props: Record<string, unknown>, layer: string): HTMLElemen
   }
   return el
 }
+
+/** How many tiles of each source are in each state, for the page log. */
+function tileStates(map: MLMap): string {
+  try {
+    // An internal of MapLibre 6, read only to explain a map that never settles.
+    const managers =
+      (
+        map as unknown as {
+          style?: {
+            tileManagers?: Record<
+              string,
+              { _tiles?: Record<string, { state?: string }> }
+            >
+          }
+        }
+      ).style?.tileManagers ?? {}
+    return Object.entries(managers)
+      .map(([id, m]) => {
+        const n: Record<string, number> = {}
+        for (const t of Object.values(m._tiles ?? {}))
+          n[t.state ?? "?"] = (n[t.state ?? "?"] ?? 0) + 1
+        return `${id} ${JSON.stringify(n)}`
+      })
+      .join("; ")
+  } catch {
+    return "tile states unavailable"
+  }
+}
+
+// A map still loading after this long is stuck, and the page log says how.
+const STUCK_MS = 20_000
 
 function absolute(url: string): string {
   // MapLibre fetches GeoJSON in a worker, where a relative URL has no base.
@@ -240,20 +272,36 @@ export function MapView({
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right")
 
     let loadingTimer = 0
+    let stuckTimer = 0
     map.on("dataloading", () => {
       window.clearTimeout(loadingTimer)
       // Shown only when loading lasts, so a cached tile does not flash the bar.
       loadingTimer = window.setTimeout(() => setLoading(true), 120)
+      if (!stuckTimer)
+        stuckTimer = window.setTimeout(() => {
+          const c = map.getCenter()
+          logProblemNow(
+            `map still loading after ${STUCK_MS / 1000} s at zoom ${map.getZoom().toFixed(1)}, ` +
+              `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}: ${tileStates(map)} · ${navigator.userAgent}`
+          )
+        }, STUCK_MS)
     })
     map.on("idle", () => {
       window.clearTimeout(loadingTimer)
+      window.clearTimeout(stuckTimer)
+      stuckTimer = 0
       setLoading(false)
     })
     map.on("error", (e) => {
-      // A missing imagery tile is expected (see basemaps.ts); anything else is reported.
       const src = (e as unknown as { sourceId?: string }).sourceId ?? ""
-      if (src === "labels" || BASEMAPS.some((b) => src.startsWith(`${b.id}:`))) return
-      live.current.onMessage(`Map: ${errorText(e.error)}`)
+      const text = errorText(e.error)
+      // A missing imagery tile is expected (see basemaps.ts): logged, not shown.
+      if (src === "labels" || BASEMAPS.some((b) => src.startsWith(`${b.id}:`))) {
+        logProblem(`tile error, ${src}: ${text}`)
+        return
+      }
+      logProblem(`map error, ${src || "map"}: ${text}`)
+      live.current.onMessage(`Map: ${text}`)
     })
 
     const hitLayers = () =>
@@ -329,6 +377,7 @@ export function MapView({
       resize.disconnect()
       cancelAnimationFrame(frame)
       window.clearTimeout(loadingTimer)
+      window.clearTimeout(stuckTimer)
       map.remove()
       mapRef.current = null
       applied.current.clear()

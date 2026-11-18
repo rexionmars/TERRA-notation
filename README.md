@@ -128,6 +128,12 @@ the interior of Brazil its finest level often stops at 17 (measured at Humaitá,
 map asks for missing tiles as errors instead and shows the finest level that exists,
 enlarged.
 
+## When something goes wrong
+
+The page writes what fails (map and tile errors, a map that stays loading for more than
+20 s, uncaught errors) to `~/Library/Logs/TERRA-Notation/page.log`, which Console.app also
+lists. Send that file with a description of what was on screen.
+
 ## Limits
 
 - Layers in a geographic system (EPSG:4326, SIRGAS 2000 EPSG:4674) or in Web Mercator are

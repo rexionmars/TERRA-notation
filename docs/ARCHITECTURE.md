@@ -145,6 +145,11 @@ tested with Vitest.
     packaged application once showed a black map with the loading bar on after such a
     flight, which this was changed for; headless WebKit, served over http rather than
     `wails://`, did not reproduce it.
+- **Page log** (`lib/pageLog.ts`, `app_pagelog.go`). Uncaught errors, map errors, tile
+  errors (counted, written every 10 s) and a map still loading after 20 s, with the state
+  of every source's tiles, are appended to `~/Library/Logs/TERRA-Notation/page.log`. The
+  web view's console cannot be opened in the packaged application; this file can be
+  read after a failure.
 - **Basemaps** (`lib/basemaps.ts`) all serve CORS headers, without which the canvas could
   not be read. Where Esri World Imagery has no imagery at a zoom, it answers with a grey
   "Map data not yet available" tile. At Humaitá (AM) its finest level is 17, and levels 18
