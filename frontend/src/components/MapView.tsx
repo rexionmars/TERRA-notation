@@ -1,11 +1,11 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react"
 import * as maplibregl from "maplibre-gl"
 import type {
-  FilterSpecification,
+  ExpressionSpecification,
   GeoJSONSource,
   LayerSpecification,
   Map as MLMap,
-  MapLayerMouseEvent,
+  MapGeoJSONFeature,
   SourceSpecification,
 } from "maplibre-gl"
 import type { FeatureCollection } from "geojson"
@@ -13,16 +13,30 @@ import { api, errorText } from "@/lib/api"
 import { BASEMAPS, LABELS_TILES, levelId } from "@/lib/basemaps"
 import { drawCrosshair, drawPastedMark } from "@/lib/capture"
 import { formatValue } from "@/lib/format"
-import type { ColumnValue, Row } from "@/lib/types"
+import type { ColumnValue } from "@/lib/types"
 
-export interface ContextLayer {
+/** A layer of the GeoPackage drawn on the map. */
+export interface MapLayer {
   name: string
   color: string
+  kind: "point" | "line" | "area"
+  /** the URL the whole layer is read from; null for a layer read per view */
+  url: string | null
+  /** a press on one of its features opens that record */
+  records: boolean
+  /** the property that names a feature, for the hover label */
+  nameColumn: string
+}
+
+export interface MapSelection {
+  layer: string
+  fid: number
+  position: [number, number]
 }
 
 export interface MapCapture {
   canvas: HTMLCanvasElement
-  /** the record's position in CSS pixels of the canvas */
+  /** the selected record's position in CSS pixels of the canvas */
   point: { x: number; y: number }
   /** the pasted location in CSS pixels, when it is in view */
   pasted: { x: number; y: number } | null
@@ -31,9 +45,35 @@ export interface MapCapture {
 
 export interface MapHandle {
   capture: () => Promise<MapCapture>
+  /** moves to a location with a short flight, so the reader sees where it went */
+  flyTo: (lon: number, lat: number) => void
 }
 
+/*
+  The zoom a record is shown at when the map is further out than a street.
+  At 16, with 256 px tiles, MapLibre asks Esri for level 17, the finest level
+  its imagery has at Humaitá, Apuí and the Miguel Gustavo agrovila (levels 18
+  and 19 are missing there), so the picture is sharp rather than enlarged.
+*/
+const RECORD_ZOOM = 16
+const STREET_ZOOM = 13
+// Features within this many pixels of the pointer are under it, as in TERRA.
+const HIT_PX = 5
+const PICKED: ExpressionSpecification = ["boolean", ["feature-state", "picked"], false]
+const DONE: ExpressionSpecification = [
+  "boolean",
+  ["feature-state", "categorized"],
+  false,
+]
 const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] }
+
+const sourceId = (layer: string) => `lyr:${layer}`
+const layerIds = (layer: string) => ({
+  fill: `lyr:${layer}:fill`,
+  casing: `lyr:${layer}:casing`,
+  line: `lyr:${layer}:line`,
+  dot: `lyr:${layer}:dot`,
+})
 
 function markElement(
   draw: (ctx: CanvasRenderingContext2D, x: number, y: number, s: number) => void
@@ -65,7 +105,7 @@ function popupContent(props: Record<string, unknown>, layer: string): HTMLElemen
   el.appendChild(title)
   let n = 0
   for (const [k, v] of Object.entries(props)) {
-    if (v === null || v === undefined || v === "" || n >= 8) continue
+    if (v === null || v === undefined || v === "" || n >= 10) continue
     const line = document.createElement("div")
     line.textContent = `${k}: ${formatValue(v as ColumnValue)}`
     el.appendChild(line)
@@ -74,53 +114,63 @@ function popupContent(props: Record<string, unknown>, layer: string): HTMLElemen
   return el
 }
 
+function absolute(url: string): string {
+  // MapLibre fetches GeoJSON in a worker, where a relative URL has no base.
+  return new URL(url, window.location.href).href
+}
+
+interface Hover {
+  x: number
+  y: number
+  text: string
+  color: string
+  /** the label opens to the left, near the right edge */
+  left: boolean
+}
+
 export function MapView({
   ref,
-  rows,
-  saved,
-  selected,
-  onSelect,
+  layers,
+  selection,
+  categorized,
+  pasted,
   basemap,
   labels,
-  context,
-  zoom,
-  onZoomChange,
-  onContextMessage,
-  pasted,
-  pastedRequest,
+  onPick,
+  onCopyPosition,
+  onMessage,
 }: {
   ref?: Ref<MapHandle>
-  rows: Row[]
-  saved: Set<number>
-  selected: Row | null
-  onSelect: (fid: number) => void
+  layers: MapLayer[]
+  selection: MapSelection | null
+  /** fids with a category, by layer name */
+  categorized: Record<string, number[]>
+  /** a pasted location, [lon, lat] */
+  pasted: [number, number] | null
   basemap: string
   labels: boolean
-  context: ContextLayer[]
-  zoom: number
-  onZoomChange: (z: number) => void
-  onContextMessage: (text: string) => void
-  /** a location the reader pasted, [lon, lat] */
-  pasted: [number, number] | null
-  /** changes each time the map should centre on the pasted location */
-  pastedRequest: number
+  onPick: (layer: string, fid: number) => void
+  onCopyPosition: (lon: number, lat: number) => void
+  onMessage: (text: string) => void
 }) {
   const container = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MLMap | null>(null)
   const marker = useRef<maplibregl.Marker | null>(null)
   const pastedMarker = useRef<maplibregl.Marker | null>(null)
-  // Layer ids with a click handler; a handler outlives its layer, so one
-  // removed and added again must not get a second.
-  const clickBound = useRef(new Set<string>())
   const [ready, setReady] = useState(false)
-  // Read inside map callbacks, which are bound once.
-  const live = useRef({ onSelect, onZoomChange, onContextMessage, context, zoom })
-  live.current = { onSelect, onZoomChange, onContextMessage, context, zoom }
+  const [loading, setLoading] = useState(false)
+  const [hover, setHover] = useState<Hover | null>(null)
+  // Read by handlers bound once, when the map is made.
+  const live = useRef({ layers, onPick, onCopyPosition, onMessage })
+  live.current = { layers, onPick, onCopyPosition, onMessage }
+  // Feature state written so far, so a change writes only the difference.
+  const applied = useRef(new Map<string, Set<number>>())
+  const picked = useRef<{ source: string; id: number } | null>(null)
 
   useEffect(() => {
     if (!container.current) return
     const sources: Record<string, SourceSpecification> = {}
-    const layers: LayerSpecification[] = []
+    const styleLayers: LayerSpecification[] = []
     for (const b of BASEMAPS) {
       b.levels.forEach((level, i) => {
         const id = levelId(b, i)
@@ -131,7 +181,14 @@ export function MapView({
           maxzoom: level.maxzoom,
           attribution: b.attribution,
         }
-        layers.push({ id, type: "raster", source: id, layout: { visibility: "none" } })
+        styleLayers.push({
+          id,
+          type: "raster",
+          source: id,
+          layout: { visibility: "none" },
+          // Tiles appear as they arrive instead of fading in over 300 ms.
+          paint: { "raster-fade-duration": 0 },
+        })
       })
     }
     sources.labels = {
@@ -141,19 +198,21 @@ export function MapView({
       maxzoom: 19,
       attribution: "Esri",
     }
-    layers.push({
+    styleLayers.push({
       id: "labels",
       type: "raster",
       source: "labels",
       layout: { visibility: "none" },
+      paint: { "raster-fade-duration": 0 },
     })
 
     const map = new maplibregl.Map({
       container: container.current,
-      style: { version: 8, sources, layers },
+      style: { version: 8, sources, layers: styleLayers },
       center: [-50, -6],
       zoom: 4,
       maxZoom: 21,
+      fadeDuration: 0,
       // North stays up, so a picture needs no north arrow beyond "north up".
       dragRotate: false,
       pitchWithRotate: false,
@@ -169,43 +228,107 @@ export function MapView({
       new maplibregl.NavigationControl({ showCompass: false }),
       "top-right"
     )
-    map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left")
+    map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right")
 
-    map.on("load", () => {
-      map.addSource("records", { type: "geojson", data: EMPTY })
-      map.addLayer({
-        id: "records",
-        type: "circle",
-        source: "records",
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 2.5, 12, 4, 17, 6],
-          "circle-color": ["case", ["get", "saved"], "#000000", "#ffffff"],
-          "circle-stroke-color": ["case", ["get", "saved"], "#ffffff", "#000000"],
-          "circle-stroke-width": ["case", ["get", "saved"], 1.5, 1.2],
-        },
-      })
-      map.on("click", "records", (e) => {
-        const fid = e.features?.[0]?.properties?.fid
-        if (typeof fid === "number") live.current.onSelect(fid)
-      })
-      map.on("mouseenter", "records", () => (map.getCanvas().style.cursor = "pointer"))
-      map.on("mouseleave", "records", () => (map.getCanvas().style.cursor = ""))
-      setReady(true)
+    let loadingTimer = 0
+    map.on("dataloading", () => {
+      window.clearTimeout(loadingTimer)
+      // Shown only when loading lasts, so a cached tile does not flash the bar.
+      loadingTimer = window.setTimeout(() => setLoading(true), 120)
     })
-    map.on("zoomend", () => live.current.onZoomChange(map.getZoom()))
+    map.on("idle", () => {
+      window.clearTimeout(loadingTimer)
+      setLoading(false)
+    })
+    map.on("error", (e) => {
+      // A missing imagery tile is expected (see basemaps.ts); anything else is reported.
+      const src = (e as unknown as { sourceId?: string }).sourceId ?? ""
+      if (src === "labels" || BASEMAPS.some((b) => src.startsWith(`${b.id}:`))) return
+      live.current.onMessage(`Map: ${errorText(e.error)}`)
+    })
+
+    const hitLayers = () =>
+      live.current.layers.flatMap((l) => {
+        const ids = layerIds(l.name)
+        return [ids.dot, ids.line].filter((id) => map.getLayer(id))
+      })
+    const layerOf = (f: MapGeoJSONFeature) =>
+      live.current.layers.find((l) => sourceId(l.name) === f.source)
+    const featureAt = (p: { x: number; y: number }): MapGeoJSONFeature | null => {
+      const ids = hitLayers()
+      if (ids.length === 0) return null
+      const found = map.queryRenderedFeatures(
+        [
+          [p.x - HIT_PX, p.y - HIT_PX],
+          [p.x + HIT_PX, p.y + HIT_PX],
+        ],
+        { layers: ids }
+      )
+      // Records first, so a school is pressed rather than the road under it.
+      return found.find((f) => layerOf(f)?.records) ?? found[0] ?? null
+    }
+
+    let frame = 0
+    map.on("mousemove", (e) => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const f = featureAt(e.point)
+        const l = f && layerOf(f)
+        map.getCanvas().style.cursor = f ? "pointer" : ""
+        if (!f || !l) {
+          setHover(null)
+          return
+        }
+        const name = f.properties?.[l.nameColumn]
+        const label =
+          name !== undefined && name !== null && name !== ""
+            ? String(name)
+            : `fid ${f.id}`
+        setHover({
+          x: e.point.x,
+          y: e.point.y,
+          text: `${label} · ${l.name}`,
+          color: l.color,
+          left: e.point.x > map.getCanvas().clientWidth - 240,
+        })
+      })
+    })
+    map.on("mouseout", () => setHover(null))
+    map.on("click", (e) => {
+      const f = featureAt(e.point)
+      const l = f && layerOf(f)
+      if (!f || !l) return
+      if (l.records && typeof f.id === "number") {
+        live.current.onPick(l.name, f.id)
+        return
+      }
+      new maplibregl.Popup({ closeButton: false, maxWidth: "320px" })
+        .setLngLat(e.lngLat)
+        .setDOMContent(popupContent(f.properties ?? {}, l.name))
+        .addTo(map)
+    })
+    map.on("contextmenu", (e) => {
+      e.preventDefault()
+      live.current.onCopyPosition(e.lngLat.lng, e.lngLat.lat)
+    })
+    map.on("load", () => setReady(true))
     mapRef.current = map
 
     const resize = new ResizeObserver(() => map.resize())
     resize.observe(container.current)
     return () => {
       resize.disconnect()
+      cancelAnimationFrame(frame)
+      window.clearTimeout(loadingTimer)
       map.remove()
       mapRef.current = null
+      applied.current.clear()
+      picked.current = null
       setReady(false)
     }
   }, [])
 
-  // Basemap and labels.
+  // Basemap and place names.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready) return
@@ -221,36 +344,174 @@ export function MapView({
     map.setLayoutProperty("labels", "visibility", labels ? "visible" : "none")
   }, [basemap, labels, ready])
 
-  // The layer's points; the selected one is drawn by the crosshair instead.
+  // The GeoPackage's layers: added, removed and stacked to match the list.
+  const layersKey = layers
+    .map((l) => `${l.name}|${l.color}|${l.url}|${l.records}`)
+    .join("\n")
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready) return
-    const data: FeatureCollection = {
-      type: "FeatureCollection",
-      features: rows
-        .filter((r) => r.position)
-        .map((r) => ({
-          type: "Feature",
-          id: r.fid,
-          geometry: { type: "Point", coordinates: r.position as [number, number] },
-          properties: { fid: r.fid, saved: saved.has(r.fid) },
-        })),
+    const wanted = new Set(layers.map((l) => sourceId(l.name)))
+    for (const layer of map.getStyle().layers) {
+      const src = "source" in layer ? String(layer.source) : ""
+      if (src.startsWith("lyr:") && !wanted.has(src)) map.removeLayer(layer.id)
     }
-    void (map.getSource("records") as GeoJSONSource).setData(data)
-  }, [rows, saved, ready])
+    for (const id of Object.keys(map.getStyle().sources)) {
+      if (id.startsWith("lyr:") && !wanted.has(id)) {
+        map.removeSource(id)
+        applied.current.delete(id)
+        if (picked.current?.source === id) picked.current = null
+      }
+    }
+    for (const l of layers) {
+      const src = sourceId(l.name)
+      const ids = layerIds(l.name)
+      if (!map.getSource(src)) {
+        map.addSource(src, { type: "geojson", data: l.url ? absolute(l.url) : EMPTY })
+        applied.current.delete(src)
+      }
+      if (l.kind === "area" && !map.getLayer(ids.fill))
+        map.addLayer({
+          id: ids.fill,
+          type: "fill",
+          source: src,
+          paint: { "fill-color": l.color, "fill-opacity": 0.12 },
+        })
+      if (l.kind !== "point" && !map.getLayer(ids.line)) {
+        map.addLayer({
+          id: ids.casing,
+          type: "line",
+          source: src,
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": "#141414", "line-opacity": 0.6, "line-width": 3 },
+        })
+        map.addLayer({
+          id: ids.line,
+          type: "line",
+          source: src,
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": l.color, "line-width": l.kind === "line" ? 2 : 1.25 },
+        })
+      }
+      if (l.kind === "point" && !map.getLayer(ids.dot))
+        map.addLayer({
+          id: ids.dot,
+          type: "circle",
+          source: src,
+          paint: {
+            "circle-color": l.color,
+            "circle-radius": ["case", PICKED, 7, 4.5],
+            "circle-stroke-color": ["case", DONE, "#ffffff", "#141414"],
+            "circle-stroke-width": ["case", DONE, 2, 1],
+          },
+        })
+    }
+    // Areas at the bottom, then lines, then points; the record layers on top.
+    const rank = (l: MapLayer) =>
+      (l.kind === "area" ? 0 : l.kind === "line" ? 1 : 2) + (l.records ? 3 : 0)
+    for (const l of [...layers].sort((a, b) => rank(a) - rank(b))) {
+      const ids = layerIds(l.name)
+      for (const id of [ids.fill, ids.casing, ids.line, ids.dot])
+        if (map.getLayer(id)) map.moveLayer(id)
+    }
+  }, [layersKey, ready])
 
+  // Layers too large to send whole are read for the area in view.
+  const perViewKey = layers
+    .filter((l) => l.url === null)
+    .map((l) => l.name)
+    .join("\n")
+  useEffect(() => {
+    const map = mapRef.current
+    const names = perViewKey ? perViewKey.split("\n") : []
+    if (!map || !ready || names.length === 0) return
+    let timer = 0
+    let cancelled = false
+    const load = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(async () => {
+        const b = map.getBounds()
+        const bbox = {
+          min_x: b.getWest(),
+          min_y: b.getSouth(),
+          max_x: b.getEast(),
+          max_y: b.getNorth(),
+        }
+        setLoading(true)
+        try {
+          const results = await Promise.all(
+            names.map((n) => api.contextFeatures(n, bbox))
+          )
+          if (cancelled) return
+          const cut: string[] = []
+          results.forEach((fc, i) => {
+            const src = map.getSource(sourceId(names[i])) as GeoJSONSource | undefined
+            if (src) void src.setData(fc)
+            if (fc.truncated) cut.push(names[i])
+          })
+          live.current.onMessage(
+            cut.length ? `Zoom in to see every feature of ${cut.join(", ")}.` : ""
+          )
+        } catch (e) {
+          live.current.onMessage(errorText(e))
+        } finally {
+          if (!cancelled) setLoading(false)
+        }
+      }, 100)
+    }
+    load()
+    map.on("moveend", load)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+      map.off("moveend", load)
+    }
+  }, [perViewKey, ready])
+
+  // Records with a category carry a white ring.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready) return
-    map.setFilter("records", selected ? ["!=", ["get", "fid"], selected.fid] : null)
+    for (const l of layers) {
+      if (!l.records) continue
+      const src = sourceId(l.name)
+      if (!map.getSource(src)) continue
+      const want = new Set(categorized[l.name] ?? [])
+      const had = applied.current.get(src) ?? new Set<number>()
+      for (const id of had)
+        if (!want.has(id))
+          map.setFeatureState({ source: src, id }, { categorized: false })
+      for (const id of want)
+        if (!had.has(id))
+          map.setFeatureState({ source: src, id }, { categorized: true })
+      applied.current.set(src, want)
+    }
+  }, [categorized, layersKey, ready])
+
+  // The selected record: a larger dot, the crosshair, and the map moved to it.
+  const selectionKey = selection
+    ? `${selection.layer}:${selection.fid}:${selection.position.join(",")}`
+    : ""
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready) return
+    if (picked.current && map.getSource(picked.current.source))
+      map.setFeatureState(picked.current, { picked: false })
+    picked.current = null
     marker.current?.remove()
     marker.current = null
-    if (!selected?.position) return
+    if (!selection) return
+    const target = { source: sourceId(selection.layer), id: selection.fid }
+    if (map.getSource(target.source)) {
+      map.setFeatureState(target, { picked: true })
+      picked.current = target
+    }
     marker.current = new maplibregl.Marker({ element: markElement(drawCrosshair) })
-      .setLngLat(selected.position)
+      .setLngLat(selection.position)
       .addTo(map)
-    map.jumpTo({ center: selected.position, zoom: live.current.zoom })
-  }, [selected, ready])
+    const z = map.getZoom()
+    map.jumpTo({ center: selection.position, zoom: z < STREET_ZOOM ? RECORD_ZOOM : z })
+  }, [selectionKey, layersKey, ready])
 
   useEffect(() => {
     const map = mapRef.current
@@ -265,144 +526,25 @@ export function MapView({
       .addTo(map)
   }, [pasted, ready])
 
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !ready || !pasted || pastedRequest === 0) return
-    map.jumpTo({ center: pasted, zoom: live.current.zoom })
-    // Only a new request moves the map; a changed record must not pull it back.
-  }, [pastedRequest, ready])
-
-  // Context layers, read for the area in view each time the map stops moving.
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !ready) return
-    const ids = new Set(context.map((c) => `ctx:${c.name}`))
-    for (const layer of map.getStyle().layers) {
-      if (
-        layer.id.startsWith("ctx:") &&
-        !ids.has(layer.id.replace(/:(fill|line|point)$/, ""))
-      ) {
-        map.removeLayer(layer.id)
-      }
-    }
-    for (const id of Object.keys(map.getStyle().sources)) {
-      if (id.startsWith("ctx:") && !ids.has(id)) map.removeSource(id)
-    }
-    for (const c of context) {
-      const id = `ctx:${c.name}`
-      if (map.getSource(id)) continue
-      map.addSource(id, { type: "geojson", data: EMPTY })
-      const isArea: FilterSpecification = [
-        "in",
-        ["geometry-type"],
-        ["literal", ["Polygon", "MultiPolygon"]],
-      ]
-      const isLine: FilterSpecification = [
-        "in",
-        ["geometry-type"],
-        ["literal", ["LineString", "MultiLineString"]],
-      ]
-      const isPoint: FilterSpecification = [
-        "in",
-        ["geometry-type"],
-        ["literal", ["Point", "MultiPoint"]],
-      ]
-      map.addLayer(
-        {
-          id: `${id}:fill`,
-          type: "fill",
-          source: id,
-          filter: isArea,
-          paint: { "fill-color": c.color, "fill-opacity": 0.12 },
-        },
-        "records"
-      )
-      map.addLayer(
-        {
-          id: `${id}:line`,
-          type: "line",
-          source: id,
-          filter: ["any", isArea, isLine],
-          paint: { "line-color": c.color, "line-width": 2 },
-        },
-        "records"
-      )
-      map.addLayer(
-        {
-          id: `${id}:point`,
-          type: "circle",
-          source: id,
-          filter: isPoint,
-          paint: {
-            "circle-radius": 5,
-            "circle-color": c.color,
-            "circle-stroke-color": "#000",
-            "circle-stroke-width": 1,
-          },
-        },
-        "records"
-      )
-      for (const kind of ["point", "line"]) {
-        const layerId = `${id}:${kind}`
-        if (clickBound.current.has(layerId)) continue
-        clickBound.current.add(layerId)
-        map.on("click", layerId, (e: MapLayerMouseEvent) => {
-          const f = e.features?.[0]
-          if (!f) return
-          new maplibregl.Popup({ closeButton: false, maxWidth: "320px" })
-            .setLngLat(e.lngLat)
-            .setDOMContent(popupContent(f.properties ?? {}, c.name))
-            .addTo(map)
-        })
-      }
-    }
-
-    let timer = 0
-    const load = () => {
-      window.clearTimeout(timer)
-      timer = window.setTimeout(async () => {
-        const b = map.getBounds()
-        const bbox = {
-          min_x: b.getWest(),
-          min_y: b.getSouth(),
-          max_x: b.getEast(),
-          max_y: b.getNorth(),
-        }
-        const cut: string[] = []
-        for (const c of live.current.context) {
-          try {
-            const fc = await api.contextFeatures(c.name, bbox)
-            const src = map.getSource(`ctx:${c.name}`) as GeoJSONSource | undefined
-            if (src) void src.setData(fc)
-            if (fc.truncated) cut.push(c.name)
-          } catch (e) {
-            live.current.onContextMessage(`${c.name}: ${errorText(e)}`)
-            return
-          }
-        }
-        live.current.onContextMessage(
-          cut.length ? `Zoom in to see every feature of ${cut.join(", ")}.` : ""
-        )
-      }, 200)
-    }
-    load()
-    map.on("moveend", load)
-    return () => {
-      window.clearTimeout(timer)
-      map.off("moveend", load)
-    }
-  }, [context, ready])
-
   useImperativeHandle(
     ref,
     () => ({
+      flyTo: (lon, lat) => {
+        const map = mapRef.current
+        if (!map) return
+        const z = map.getZoom()
+        map.flyTo({
+          center: [lon, lat],
+          zoom: z < STREET_ZOOM ? RECORD_ZOOM : z,
+          duration: 800,
+        })
+      },
       capture: async () => {
         const map = mapRef.current
         if (!map) throw new Error("the map is not ready")
-        if (!selected?.position)
-          throw new Error("the record has no position to capture")
+        if (!selection) throw new Error("no record is selected")
         await idle(map)
-        const p = map.project(selected.position)
+        const p = map.project(selection.position)
         const canvas = map.getCanvas()
         let pastedAt: MapCapture["pasted"] = null
         if (pasted) {
@@ -423,10 +565,35 @@ export function MapView({
         }
       },
     }),
-    [selected, pasted]
+    [selection, pasted]
   )
 
-  // Positioned inline: MapLibre's stylesheet gives the container
-  // position: relative outside any cascade layer, which beats a Tailwind class.
-  return <div ref={container} style={{ position: "absolute", inset: 0 }} />
+  return (
+    <>
+      {/* Positioned inline: MapLibre's stylesheet gives the container
+          position: relative outside any cascade layer, which beats a Tailwind class. */}
+      <div ref={container} style={{ position: "absolute", inset: 0 }} />
+      {loading && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden bg-accent/20">
+          <div className="map-loading h-full w-1/3 bg-accent" />
+        </div>
+      )}
+      {hover && (
+        <div
+          className="pointer-events-none absolute z-20 max-w-[320px] truncate rounded bg-black/85 px-2 py-0.5 text-[11px] whitespace-nowrap text-white"
+          style={
+            hover.left
+              ? { right: `calc(100% - ${hover.x - 12}px)`, top: hover.y + 12 }
+              : { left: hover.x + 12, top: hover.y + 12 }
+          }
+        >
+          <span
+            className="mr-1.5 inline-block h-2 w-2 rounded-full border border-black/60 align-middle"
+            style={{ background: hover.color }}
+          />
+          {hover.text}
+        </div>
+      )}
+    </>
+  )
 }

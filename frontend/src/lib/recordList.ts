@@ -1,4 +1,3 @@
-import { distanceMeters } from "./coordinates"
 import type { Row, Summary } from "./types"
 
 /*
@@ -13,7 +12,7 @@ import type { Row, Summary } from "./types"
 export type StatusFilter =
   "all" | "uncategorized" | "categorized" | "no_reference_image" | `category:${string}`
 
-export type ListOrder = "fid" | "random" | "distance"
+export type ListOrder = "fid" | "random"
 
 export interface ListQuery {
   search: string
@@ -21,8 +20,6 @@ export interface ListQuery {
   order: ListOrder
   /** ids the SQL filter selected; null when no filter is applied */
   sqlIds: Set<number> | null
-  /** [lon, lat] the "distance" order measures from; without it that order is by id */
-  near: [number, number] | null
 }
 
 /** mulberry32, a small seeded generator; enough to shuffle a list. */
@@ -95,16 +92,7 @@ export function visibleRows(
       return v !== null && fold(String(v)).includes(needle)
     })
   })
-  const near = query.near
-  if (query.order === "distance" && near) {
-    const d = (r: Row) =>
-      r.position
-        ? distanceMeters(near[0], near[1], r.position[0], r.position[1])
-        : Number.POSITIVE_INFINITY
-    const dist = new Map(keep.map((r) => [r.fid, d(r)]))
-    return keep.sort((a, b) => (dist.get(a.fid) ?? 0) - (dist.get(b.fid) ?? 0))
-  }
-  if (query.order !== "random") return keep
+  if (query.order === "fid") return keep
   const rank = new Map<number, number>()
   seededOrder(
     rows.map((r) => r.fid),

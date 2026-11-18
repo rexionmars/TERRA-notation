@@ -59,3 +59,17 @@ body {
   border-top-color: var(--color-raised) !important;
   border-bottom-color: var(--color-raised) !important;
 }
+
+/* The map's loading bar: a third of the width sliding across. */
+@keyframes map-loading {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.map-loading {
+  animation: map-loading 1s ease-in-out infinite;
+}

@@ -10,6 +10,7 @@ import { api, errorText, imageURL } from "@/lib/api"
 import { BASEMAPS } from "@/lib/basemaps"
 import { composeCapture, type LegendItem } from "@/lib/capture"
 import { distanceMeters, parseLocation, type Extent } from "@/lib/coordinates"
+import { layerColor } from "@/lib/palette"
 import {
   formatCount,
   formatLength,
@@ -36,8 +37,14 @@ import type {
 } from "@/lib/types"
 import { AnnotationForm, type FormState } from "@/components/AnnotationForm"
 import { CompareView } from "@/components/CompareView"
-import { LocationBox } from "@/components/LocationBox"
-import { MapView, type ContextLayer, type MapHandle } from "@/components/MapView"
+import { LocationField } from "@/components/LocationField"
+import { MapLegend } from "@/components/MapLegend"
+import {
+  MapView,
+  type MapHandle,
+  type MapLayer,
+  type MapSelection,
+} from "@/components/MapView"
 import { RecordList } from "@/components/RecordList"
 import { SettingsDialog } from "@/components/SettingsDialog"
 import { Slot } from "@/components/Slot"
@@ -53,14 +60,6 @@ const CATEGORY_COLORS = [
   "#999999",
   "#0072B2",
   "#F0E442",
-]
-const CONTEXT_COLORS = [
-  "#56B4E9",
-  "#E69F00",
-  "#CC79A7",
-  "#009E73",
-  "#D55E00",
-  "#0072B2",
 ]
 
 const emptyLayer: LayerSettings = {
@@ -83,11 +82,26 @@ function isPointLayer(l: Layer): boolean {
   return t === "POINT" || t === "MULTIPOINT"
 }
 
-function legendKind(l: Layer | undefined): LegendItem["kind"] {
-  const t = (l?.geometry_type ?? "").toUpperCase()
+function geometryKind(l: Layer): MapLayer["kind"] {
+  const t = l.geometry_type.toUpperCase()
   if (t.includes("POLYGON")) return "area"
   if (t.includes("LINE")) return "line"
   return "point"
+}
+
+// Layers up to this many features are sent to the map whole (see gpkg.GeoJSON).
+const WHOLE_LAYER_FEATURES = 50_000
+const NAME_GUESSES = ["name", "nome", "nm_mun", "label"]
+const EMPTY_SUMMARIES = new Map<number, Summary>()
+
+/**
+ * Where the map reads a whole layer. A layer of records needs only its names,
+ * for the hover label: its attributes are shown from the table once a record
+ * is opened, and sending them all is 4.7 MB for the CNEFE schools.
+ */
+function layerURL(name: string, keep: string | null): string {
+  const path = `/layer-geojson/${encodeURIComponent(name)}`
+  return keep === null ? path : `${path}?keep=${encodeURIComponent(keep)}`
 }
 
 function isTyping(t: EventTarget | null): boolean {
@@ -138,8 +152,44 @@ export function AnnotatePage({
     ...(layer ? settings.layers[layer.name] : {}),
   }
 
+  /*
+    The layers of the open register: the open layer, and every
+    point layer whose identifier column has the same name (cnefe_id for both
+    CNEFE layers). They are drawn by default, a press on one of their points
+    opens that record, and a pasted location is looked up in them. Layers of
+    another source, such as OpenStreetMap, are left out: "an OpenStreetMap
+    school 30 m away" would tell the annotator what a hidden matched column
+    holds.
+  */
+  const registerLayers = useMemo(() => {
+    if (!layer) return []
+    const id = ls.id_column
+    return pointLayers
+      .filter(
+        (l) =>
+          l.name === layer.name ||
+          (id !== "" && settings.layers[l.name]?.id_column === id)
+      )
+      .map((l) => l.name)
+  }, [layer, ls.id_column, pointLayers, settings.layers])
+  const registerKey = registerLayers.join("\n")
+
   const [table, setTable] = useState<Table | null>(null)
-  const [summaries, setSummaries] = useState(new Map<number, Summary>())
+  // Every layer read so far, kept so that going back to one is instant.
+  const tables = useRef(new Map<string, Table>())
+  const [summariesByLayer, setSummariesByLayer] = useState(
+    new Map<string, Map<number, Summary>>()
+  )
+  const summaries = summariesByLayer.get(layer?.name ?? "") ?? EMPTY_SUMMARIES
+  const updateSummary = (layerName: string, recordFid: number, r: Entry) =>
+    setSummariesByLayer((all) => {
+      const next = new Map(all)
+      next.set(
+        layerName,
+        withSummary(all.get(layerName) ?? EMPTY_SUMMARIES, recordFid, r)
+      )
+      return next
+    })
   const [loadError, setLoadError] = useState("")
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
@@ -162,13 +212,13 @@ export function AnnotatePage({
   const [activeSide, setActiveSide] = useState<Side>("reference")
   const [basemap, setBasemap] = usePersisted("basemap", "esri_imagery")
   const [labels, setLabels] = usePersisted("labels", false)
-  const [zoom, setZoom] = usePersisted("zoom", 18)
-  const [contextNames, setContextNames] = usePersisted<string[]>(key("context"), [])
+  // The layers drawn besides the open one; until chosen, the open register's.
+  const [shownNames, setShownNames] = usePersisted<string[] | null>(key("drawn"), null)
+  const drawnNames = shownNames ?? registerLayers
   const [contextMessage, setContextMessage] = useState("")
 
-  // A location the reader pasted, [lon, lat], and the request to centre on it.
+  // A location the reader pasted that is not a record, [lon, lat].
   const [pasted, setPasted] = useState<[number, number] | null>(null)
-  const [pastedRequest, setPastedRequest] = useState(0)
   const [locText, setLocText] = useState("")
   const [locError, setLocError] = useState("")
   const locInput = useRef<HTMLInputElement>(null)
@@ -185,29 +235,71 @@ export function AnnotatePage({
   const pendingRecord = useRef<{ layer: string; fid: number } | null>(null)
   const lastIndex = useRef(0)
 
-  const flash = (text: string) => {
+  const flash = (text: string, ms = 2200) => {
     setNotice(text)
-    window.setTimeout(() => setNotice((n) => (n === text ? "" : n)), 1800)
+    window.setTimeout(() => setNotice((n) => (n === text ? "" : n)), ms)
   }
 
   // ---- the layer -------------------------------------------------------------
 
   useEffect(() => {
     if (!layer) return
+    const cached = tables.current.get(layer.name)
+    setLoadError("")
+    if (cached) {
+      setTable(cached)
+      return
+    }
     let cancelled = false
     setTable(null)
-    setLoadError("")
-    Promise.all([api.loadLayer(layer.name), api.summaries(layer.name)])
-      .then(([t, s]) => {
-        if (cancelled) return
-        setSummaries(new Map(s.map((x) => [x.fid, x])))
-        setTable(t)
+    api
+      .loadLayer(layer.name)
+      .then((t) => {
+        tables.current.set(t.layer, t)
+        if (!cancelled) setTable(t)
       })
       .catch((e) => !cancelled && setLoadError(errorText(e)))
     return () => {
       cancelled = true
     }
   }, [layer?.name])
+
+  // Which records have an answer, for every point layer, so the map can ring them.
+  useEffect(() => {
+    let cancelled = false
+    Promise.all(
+      pointLayers.map((l) =>
+        api
+          .summaries(l.name)
+          .then((list) => [l.name, new Map(list.map((x) => [x.fid, x]))] as const)
+      )
+    )
+      .then((all) => !cancelled && setSummariesByLayer(new Map(all)))
+      .catch((e) => !cancelled && setError(errorText(e)))
+    return () => {
+      cancelled = true
+    }
+  }, [pointLayers])
+
+  // The other layers of the register are read in the background once the open
+  // one is on screen, so that a record of theirs opens without waiting.
+  useEffect(() => {
+    if (!table) return
+    let cancelled = false
+    void (async () => {
+      for (const name of registerLayers) {
+        if (cancelled || tables.current.has(name)) continue
+        try {
+          tables.current.set(name, await api.loadLayer(name))
+        } catch {
+          // Read again, with its error shown, when it is opened.
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [table, registerKey])
 
   const columns = table?.columns ?? []
   const colIdx = useMemo(() => new Map(columns.map((c, i) => [c.name, i])), [columns])
@@ -233,18 +325,12 @@ export function AnnotatePage({
       .filter(shown)
       .map((c) => formatValue(valueOf(r, c)))
       .join(" · ")
-  const distanceTo = (r: Row) =>
-    pasted && r.position
-      ? distanceMeters(pasted[0], pasted[1], r.position[0], r.position[1])
-      : null
   const detailOf = (r: Row) => {
     const id = valueOf(r, ls.id_column)
     const parts = [id !== null ? String(id) : "", infoOf(r)].filter(Boolean)
     // The title is already "fid N" when the layer has no name column.
     if (parts.length === 0 && valueOf(r, ls.name_column) !== null)
       parts.push(`fid ${r.fid}`)
-    const d = distanceTo(r)
-    if (d !== null) parts.unshift(formatLength(d))
     return parts.join(" · ")
   }
 
@@ -254,12 +340,12 @@ export function AnnotatePage({
         ? visibleRows(
             table.rows,
             summaries,
-            { search, status, order, sqlIds, near: pasted },
+            { search, status, order, sqlIds },
             searchCols,
             settings.seed
           )
         : [],
-    [table, summaries, search, status, order, sqlIds, pasted, searchCols, settings.seed]
+    [table, summaries, search, status, order, sqlIds, searchCols, settings.seed]
   )
   // The layer's extent, which tells a latitude-longitude pair from a reversed one.
   const extent = useMemo<Extent | null>(() => {
@@ -284,6 +370,29 @@ export function AnnotatePage({
       ),
     [summaries]
   )
+  const categorizedByLayer = useMemo(
+    () =>
+      Object.fromEntries(
+        [...summariesByLayer].map(([name, m]) => [
+          name,
+          [...m.values()].filter((x) => x.category !== "").map((x) => x.fid),
+        ])
+      ),
+    [summariesByLayer]
+  )
+  const mapSelection = useMemo<MapSelection | null>(
+    () =>
+      table && selected?.position
+        ? { layer: table.layer, fid: selected.fid, position: selected.position }
+        : null,
+    [table, selected]
+  )
+  // A pasted location belongs to the record it was pasted for.
+  useEffect(() => {
+    setPasted(null)
+    setLocText("")
+    setLocError("")
+  }, [table?.layer, fid])
 
   useEffect(() => {
     if (!table) return
@@ -312,6 +421,7 @@ export function AnnotatePage({
       return
     }
     const n = ++recordRequest.current
+    setSourceTab("map")
     setRecord(null)
     setForm(emptyForm)
     setDirty(false)
@@ -325,7 +435,6 @@ export function AnnotatePage({
           reference_label: r.annotation?.reference_label ?? "",
           notes: r.annotation?.notes ?? "",
         })
-        setSourceTab(r.source_image ? "image" : "map")
       })
       .catch((e) => setError(errorText(e)))
   }, [table, fid])
@@ -334,7 +443,7 @@ export function AnnotatePage({
     if (!table || fid === null) return
     const r = await api.record(table.layer, fid)
     setRecord(r)
-    setSummaries((m) => withSummary(m, fid, r))
+    updateSummary(table.layer, fid, r)
   }
 
   const save = async (): Promise<boolean> => {
@@ -344,7 +453,7 @@ export function AnnotatePage({
       const r = await api.saveAnnotation({ layer: table.layer, fid, ...form })
       setRecord(r)
       setDirty(false)
-      setSummaries((m) => withSummary(m, fid, r))
+      updateSummary(table.layer, fid, r)
       if (history) setHistory(await api.history(table.layer, fid))
       flash("Saved")
       return true
@@ -411,12 +520,33 @@ export function AnnotatePage({
   }
 
   const basemapLabel = BASEMAPS.find((b) => b.id === basemap)?.label ?? basemap
-  const contextLayers: ContextLayer[] = useMemo(
+  const drawnKey = drawnNames.join("\n")
+  const mapLayers: MapLayer[] = useMemo(
     () =>
-      contextNames
-        .filter((n) => project.layers.some((l) => l.name === n && !l.problem))
-        .map((name, i) => ({ name, color: CONTEXT_COLORS[i % CONTEXT_COLORS.length] })),
-    [contextNames, project.layers]
+      project.layers.flatMap((l, i) => {
+        if (l.problem) return []
+        if (l.name !== layer?.name && !drawnNames.includes(l.name)) return []
+        const s = settings.layers[l.name]
+        const cols = l.columns.map((c) => c.name)
+        const nameColumn =
+          s?.name_column && !(s.hidden_columns ?? []).includes(s.name_column)
+            ? s.name_column
+            : (NAME_GUESSES.find((g) => cols.includes(g)) ?? "")
+        return [
+          {
+            name: l.name,
+            color: layerColor(i),
+            kind: geometryKind(l),
+            url:
+              l.feature_count <= WHOLE_LAYER_FEATURES
+                ? layerURL(l.name, registerLayers.includes(l.name) ? nameColumn : null)
+                : null,
+            records: registerLayers.includes(l.name),
+            nameColumn,
+          },
+        ]
+      }),
+    [project.layers, layer?.name, drawnKey, registerKey, settings.layers]
   )
 
   const captureMap = () =>
@@ -435,8 +565,7 @@ export function AnnotatePage({
         .filter(Boolean)
         .join(" · ")
       const legend: LegendItem[] = [
-        { label: "this record", kind: "crosshair" },
-        { label: "other records of the layer", kind: "record" },
+        { label: `selected record, ${table.layer}`, kind: "crosshair" },
       ]
       if (cap.pasted && pasted) {
         const d = distanceMeters(
@@ -450,15 +579,14 @@ export function AnnotatePage({
           kind: "pasted",
         })
       }
-      if (categorized.size > 0)
-        legend.push({ label: "records with a category", kind: "saved" })
-      for (const c of contextLayers) {
-        legend.push({
-          label: c.name,
-          kind: legendKind(project.layers.find((l) => l.name === c.name)),
-          color: c.color,
-        })
-      }
+      for (const l of mapLayers)
+        legend.push({ label: l.name, kind: l.kind, color: l.color })
+      if (
+        mapLayers.some(
+          (l) => l.records && (categorizedByLayer[l.name]?.length ?? 0) > 0
+        )
+      )
+        legend.push({ label: "has a category", kind: "categorized" })
       const dataURL = composeCapture(
         cap.canvas,
         cap.point,
@@ -537,7 +665,45 @@ export function AnnotatePage({
 
   // ---- pasted location -------------------------------------------------------
 
-  /** Reads a location and centres the map on it; false when it cannot be read. */
+  /** Opens a record, switching to its layer when it is another. */
+  const openRecord = async (layerName: string, recordFid: number) => {
+    if (table?.layer === layerName) await selectFid(recordFid)
+    else await changeLayer(layerName, recordFid)
+  }
+
+  /*
+    Going to a pasted location. A record of the open register within 1 m of it
+    is the record the coordinate was copied from, and it is opened. Anywhere
+    else the map flies there, marks the place, and a note gives the nearest
+    record and the distance from the selected one.
+  */
+  const arrive = async (lon: number, lat: number, swapped: boolean) => {
+    const prefix = swapped ? "Read as longitude, latitude. " : ""
+    let near: NearRecord[] = []
+    try {
+      near = await api.nearestRecords(registerLayers, lon, lat, 1)
+    } catch (e) {
+      setError(errorText(e))
+    }
+    const n = near[0]
+    if (n && n.meters <= EXACT_MATCH_METERS) {
+      flash(`${prefix}${n.title} · ${n.layer}`)
+      if (n.layer === table?.layer && n.fid === fid) mapRef.current?.flyTo(lon, lat)
+      else await openRecord(n.layer, n.fid)
+      return
+    }
+    setPasted([lon, lat])
+    mapRef.current?.flyTo(lon, lat)
+    const parts = [`${prefix}No record at this location.`]
+    if (n) parts.push(`Nearest: ${n.title} (${n.layer}), ${formatLength(n.meters)}.`)
+    if (selected?.position)
+      parts.push(
+        `${formatLength(distanceMeters(lon, lat, selected.position[0], selected.position[1]))} from the selected record.`
+      )
+    flash(parts.join(" "), 6000)
+  }
+
+  /** Reads a location and goes there; false when it cannot be read. */
   const goTo = (text: string): boolean => {
     const r = parseLocation(text, extent)
     if (!r.ok) {
@@ -545,70 +711,15 @@ export function AnnotatePage({
       return false
     }
     setLocError("")
-    setPasted([r.lon, r.lat])
-    setPastedRequest((n) => n + 1)
-    openExactMatch.current = true
     setSourceTab("map")
-    if (r.swapped) flash("Read as longitude, latitude")
+    void arrive(r.lon, r.lat, r.swapped)
     return true
   }
 
-  /*
-    The layers a pasted location is looked up in: the open layer, and every
-    point layer whose identifier column has the same name (cnefe_id for both
-    CNEFE layers), which is to say the same register. Layers of another
-    source, such as OpenStreetMap, are left out: listing "an OpenStreetMap
-    school 30 m away" would tell the annotator what a hidden matched column
-    holds.
-  */
-  const registerLayers = useMemo(() => {
-    if (!layer) return []
-    const id = ls.id_column
-    return pointLayers
-      .filter(
-        (l) =>
-          l.name === layer.name ||
-          (id !== "" && settings.layers[l.name]?.id_column === id)
-      )
-      .map((l) => l.name)
-  }, [layer, ls.id_column, pointLayers, settings.layers])
-  const registerKey = registerLayers.join("\n")
-
-  const [nearest, setNearest] = useState<NearRecord[]>([])
-  // Set by a new paste: a record exactly at the location is then opened.
-  const openExactMatch = useRef(false)
-
-  /** Opens a record, switching to its layer when it is another. */
-  const openRecord = async (layerName: string, recordFid: number) => {
-    if (table?.layer === layerName) await selectFid(recordFid)
-    else await changeLayer(layerName, recordFid)
+  const copyPosition = (lon: number, lat: number) => {
+    const text = plainPosition(lon, lat)
+    void ClipboardSetText(text).then(() => flash(`Copied ${text}`))
   }
-
-  useEffect(() => {
-    if (!pasted || registerLayers.length === 0) {
-      setNearest([])
-      return
-    }
-    let cancelled = false
-    api
-      .nearestRecords(registerLayers, pasted[0], pasted[1], 6)
-      .then((list) => {
-        if (cancelled) return
-        setNearest(list)
-        const exact = list[0]
-        if (openExactMatch.current && exact && exact.meters <= EXACT_MATCH_METERS) {
-          if (exact.layer !== table?.layer || exact.fid !== fid) {
-            flash(`Opened ${exact.title} (${exact.layer}), the record at this location`)
-          }
-          void openRecord(exact.layer, exact.fid)
-        }
-        openExactMatch.current = false
-      })
-      .catch((e) => !cancelled && setLocError(errorText(e)))
-    return () => {
-      cancelled = true
-    }
-  }, [pasted, pastedRequest, registerKey])
 
   /*
     ⌘V outside a text field: a location on the clipboard moves the map there;
@@ -782,39 +893,60 @@ export function AnnotatePage({
         </label>
         <details className="relative">
           <summary className="flex h-7 cursor-default list-none items-center rounded border border-line bg-raised px-2.5 text-[12px] hover:bg-hover">
-            Context layers{contextLayers.length ? ` (${contextLayers.length})` : ""}
+            Layers ({mapLayers.length})
           </summary>
-          <div className="absolute right-0 z-40 mt-1 max-h-[60vh] w-[300px] overflow-y-auto rounded border border-line bg-panel p-2 shadow-xl">
-            <p className="mb-1 text-[11px] text-muted">
-              Other layers of the GeoPackage, drawn for the area in view.
+          <div className="absolute right-0 z-40 mt-1 max-h-[70vh] w-[340px] overflow-y-auto rounded border border-line bg-panel p-2 shadow-xl">
+            <p className="mb-1.5 text-[11px] text-muted">
+              Layers of the GeoPackage drawn on the map. Pressing a point of a layer
+              marked “records” opens that record.
             </p>
-            {project.layers
-              .filter((l) => l.name !== layer?.name)
-              .map((l) => (
+            {project.layers.map((l, i) => {
+              const isOpen = l.name === layer?.name
+              const kind = geometryKind(l)
+              const color = layerColor(i)
+              return (
                 <label
                   key={l.name}
                   className={cn(
-                    "flex items-center gap-2 py-0.5 text-[12px]",
+                    "flex items-center gap-2 rounded px-1 py-0.5 text-[12px] hover:bg-hover",
                     l.problem && "opacity-50"
                   )}
-                  title={l.problem}
+                  title={l.problem || l.description}
                 >
                   <input
                     type="checkbox"
-                    disabled={!!l.problem}
-                    checked={contextNames.includes(l.name)}
+                    disabled={!!l.problem || isOpen}
+                    checked={isOpen || drawnNames.includes(l.name)}
                     onChange={(e) =>
-                      setContextNames(
+                      setShownNames(
                         e.target.checked
-                          ? [...contextNames, l.name]
-                          : contextNames.filter((n) => n !== l.name)
+                          ? [...drawnNames, l.name]
+                          : drawnNames.filter((n) => n !== l.name)
                       )
                     }
                   />
-                  <span className="flex-1 truncate">{l.name}</span>
-                  <span className="text-muted">{l.geometry_type.toLowerCase()}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 border border-black/60",
+                      kind === "point"
+                        ? "h-2.5 w-2.5 rounded-full"
+                        : kind === "line"
+                          ? "h-1 w-3"
+                          : "h-2.5 w-3"
+                    )}
+                    style={{ background: color }}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{l.name}</span>
+                  <span className="shrink-0 text-[11px] text-muted">
+                    {isOpen
+                      ? "open"
+                      : registerLayers.includes(l.name)
+                        ? "records"
+                        : `${formatCount(l.feature_count)} ${kind === "point" ? "points" : kind === "line" ? "lines" : "areas"}`}
+                  </span>
                 </label>
-              ))}
+              )
+            })}
           </div>
         </details>
         <Button onClick={() => setSettingsOpen(true)}>Settings</Button>
@@ -878,9 +1010,6 @@ export function AnnotatePage({
               >
                 <option value="fid">Feature id</option>
                 <option value="random">Random ({settings.seed})</option>
-                <option value="distance" disabled={!pasted}>
-                  Distance to pasted location
-                </option>
               </select>
             </div>
             <details>
@@ -1059,20 +1188,17 @@ export function AnnotatePage({
               >
                 <MapView
                   ref={mapRef}
-                  rows={table?.rows ?? []}
-                  saved={categorized}
-                  selected={selected}
-                  onSelect={(n) => void selectFid(n)}
+                  layers={mapLayers}
+                  selection={mapSelection}
+                  categorized={categorizedByLayer}
+                  pasted={pasted}
                   basemap={basemap}
                   labels={labels}
-                  context={contextLayers}
-                  zoom={zoom}
-                  onZoomChange={setZoom}
-                  onContextMessage={setContextMessage}
-                  pasted={pasted}
-                  pastedRequest={pastedRequest}
+                  onPick={(l, n) => void openRecord(l, n)}
+                  onCopyPosition={copyPosition}
+                  onMessage={setContextMessage}
                 />
-                <LocationBox
+                <LocationField
                   inputRef={locInput}
                   text={locText}
                   onTextChange={(t) => {
@@ -1081,21 +1207,14 @@ export function AnnotatePage({
                   }}
                   onGo={goTo}
                   error={locError}
-                  pasted={pasted}
-                  layer={table?.layer ?? ""}
-                  nearest={nearest}
-                  selected={fid}
-                  onPick={(l, n) => void openRecord(l, n)}
-                  onShow={() => setPastedRequest((n) => n + 1)}
-                  onClear={() => {
-                    setPasted(null)
-                    setLocText("")
-                    setLocError("")
-                    if (order === "distance") setOrder("fid")
-                  }}
+                />
+                <MapLegend
+                  layers={mapLayers}
+                  activeLayer={table?.layer ?? ""}
+                  pasted={pasted !== null}
                 />
                 {contextMessage && (
-                  <div className="absolute bottom-8 left-2 rounded bg-black/70 px-2 py-1 text-[11px]">
+                  <div className="absolute top-12 left-2 z-10 rounded bg-black/80 px-2 py-1 text-[11px]">
                     {contextMessage}
                   </div>
                 )}

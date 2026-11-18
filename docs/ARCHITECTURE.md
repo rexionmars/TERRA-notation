@@ -41,10 +41,15 @@ the TERRA desktop application uses, so the binary needs neither cgo SQLite nor G
   datum shift. Between SIRGAS 2000 and WGS 84 the difference in Brazil is under a metre,
   below the precision of a CNEFE coordinate. Web Mercator is converted. Anything else,
   such as UTM, is refused with the `ogr2ogr` command that converts it.
-- **Loading.** A point layer is sent to the page whole: 8 054 schools are read in about
-  45 ms and cross as 2.2 MB of JSON. Layers past 500 000 features are refused. Context
-  layers (roads, the corridor, Indigenous lands) are read only for the area in view,
-  through the layer's R-tree when it has one, at most 4 000 features per request.
+- **Loading.** The open layer's table reaches the record list through a bound method:
+  8 054 schools are read in about 45 ms and cross as 2.2 MB of JSON. Layers past 500 000
+  features are refused. The map reads layers of up to 50 000 features whole, as GeoJSON
+  from `/layer-geojson/<layer>` (`GeoJSON`, without the hidden columns, and with only the
+  name column when the page asks with `?keep=`: 1.2 MB for the schools instead of
+  4.7 MB). Larger layers, such as the 185 994 OpenStreetMap roads, are read for the area
+  in view through the layer's R-tree, at most 4 000 features per request.
+- **Order.** Layers are listed in the order of `gpkg_contents`' rows, the order the
+  writer added them, which is also the order QGIS and TERRA show them in.
 - **Nearest records.** `Nearest` reads a box around a point from each named layer, through
   the R-tree, and doubles the box (from 0.005° up to 2°) until the last record it returns
   is nearer than anything outside the box can be. On the CNEFE corridor file the six
@@ -109,14 +114,30 @@ tested with Vitest.
   columns that are not hidden. The random order is a Fisher–Yates permutation of every
   feature id of the layer, sorted first and drawn with mulberry32 from the project's seed,
   so a filter narrows the order without reshuffling it, and the same seed gives the same
-  order on any machine. The distance order measures from a pasted location.
+  order on any machine.
 - **Hidden columns** are left out of the header, the list, the attribute table, the search
   and the map picture. They remain in the GeoPackage and in every export.
-- **Map** (`components/MapView.tsx`). MapLibre with rotation and pitch disabled, so north
-  is always up. The canvas keeps its drawing buffer (`preserveDrawingBuffer`), so it can
-  be read for a picture at any moment. The record is marked by a crosshair drawn on a
-  canvas; the other records of the layer are circles, white when they have no category and
-  black when they have one.
+- **Map** (`components/MapView.tsx`), built to behave like TERRA's. MapLibre with
+  rotation and pitch disabled, so north is always up, and with its drawing buffer kept,
+  so the canvas can be read for a picture at any moment.
+  - Every drawn layer is one GeoJSON source given its URL, so MapLibre parses it in its
+    worker; TERRA measured a 12 s freeze when a large layer was handed over as an object.
+  - Colours are given out in turn, in file order, from the Okabe and Ito palette without
+    black (`lib/palette.ts`), as TERRA does, so a file shows the same colours in both.
+  - Points have a radius of 4.5 px, and 7 px for the open record (feature state
+    `picked`); a record with an answer has a white ring (feature state `categorized`).
+    The open record also carries the crosshair, drawn on a canvas so the picture can
+    draw the same mark.
+  - The pointer is tested against points and lines within 5 px, records first. Hovering
+    shows the name and the layer; pressing a record opens it; pressing anything else
+    shows its attributes; a right-click copies "lat, lon".
+  - A record is shown at zoom 16 when the map is further out than zoom 13, and at the
+    reader's zoom otherwise. At 16, with 256 px tiles, MapLibre asks Esri for level 17,
+    the finest level its imagery has at Humaitá, Apuí and the Miguel Gustavo agrovila;
+    the previous default of 18 asked for level 19 and drew level 17 enlarged four times.
+  - Raster tiles appear without the 300 ms fade, and a bar along the top of the map
+    shows from `dataloading` until `idle`, after 120 ms so that cached tiles do not flash
+    it.
 - **Basemaps** (`lib/basemaps.ts`) all serve CORS headers, without which the canvas could
   not be read. Where Esri World Imagery has no imagery at a zoom, it answers with a grey
   "Map data not yet available" tile. At Humaitá (AM) its finest level is 17, and levels 18
@@ -136,13 +157,19 @@ tested with Vitest.
   layer's extent (padded by 1°) and the reversed one falls inside, the pair is reversed and
   the page says so. Distances are great-circle distances on the IUGG mean radius, within
   0.5 % of the ellipsoid's.
-- **The record at a pasted location.** The nearest records are looked up in Go across the
-  open layer and every point layer whose identifier column has the same name, that is,
-  the same register: `schools_cnefe` and `health_cnefe` share `cnefe_id`. A record within
-  1 m is the record the coordinate was copied from, and it is opened, switching layer when
-  it is in another; the switch waits for the layer to load through a pending selection.
-  Layers of another source are not searched. An OpenStreetMap school listed 30 m away
-  would tell the annotator what a hidden `matched` column holds.
+- **The record at a pasted location.** The nearest record is looked up in Go across the
+  open register: the open layer and every point layer whose identifier column has the
+  same name (`schools_cnefe` and `health_cnefe` share `cnefe_id`). A record within 1 m is
+  the record the coordinate was copied from, and it is opened, switching layer when it is
+  in another. Anywhere else the map flies to the place in 800 ms, marks it, and a note
+  gives the nearest record and the distance from the open one; the mark belongs to the
+  open record and goes when another opens. Layers of another source are neither searched
+  nor drawn by default: an OpenStreetMap school 30 m away would tell the annotator what a
+  hidden `matched` column holds.
+- **Layer tables are kept.** Each layer's table is kept in the page once read, and the
+  register's other layers are read in the background after the open one, so a record of
+  another layer opens in about 0.2 s instead of the seconds a fresh read took. Answers
+  are summarised for every point layer at the start, for the rings on the map.
 - **Keyboard.** One `keydown` listener reads the latest handlers through a ref. `⌘V`
   outside a text field reads the clipboard text first: coordinates move the map, and
   anything else is taken as an image for the active slot.

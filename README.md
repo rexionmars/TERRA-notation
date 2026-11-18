@@ -35,7 +35,8 @@ open -a "build/bin/TERRA Notation.app" --args /path/to/project-folder   # open a
 
 1. **New project**: choose the `.gpkg`, a folder for the project, a name and the
    annotator's name. Every point layer can be annotated; the other layers (roads, the
-   corridor, Indigenous lands, OpenStreetMap facilities) can be drawn on the map as context.
+   corridor, Indigenous lands, OpenStreetMap facilities) can be drawn on the map from the
+   Layers menu.
 2. Pick the layer at the top (`schools_cnefe`, `health_cnefe`). The list on the left can be
    searched (accents ignored), filtered by category, by "without a reference screenshot", or
    by an SQL condition on the layer's own columns (`matched = 0 AND distance_to_road_km > 5`),
@@ -47,21 +48,26 @@ open -a "build/bin/TERRA Notation.app" --args /path/to/project-folder   # open a
      Google Maps); the selection becomes the screenshot of the active slot. `⌘V` pastes an
      image copied with `⌃⇧⌘4`; an image file can also be dropped on a slot. Click a slot to
      make it the active one.
-   - **Paste a location** in the field over the map (`L` focuses it; `⌘V` outside a text
-     field does the same when the clipboard holds coordinates). It reads
-     `-7.546178, -63.067186` as Google Maps copies it, decimal commas
-     (`-7,546178; -63,067186`), degrees, minutes and seconds (`7°32'46.2"S 63°04'01.9"W`)
-     and Google Maps links. The map centres there with a blue diamond and lists the nearest
-     records with their distance, from the open layer and from the other layers of the
-     same register (those whose identifier column has the same name, `cnefe_id` for the
-     CNEFE schools and health facilities). A record exactly at the location, within 1 m,
-     is opened, switching layer if it is in another one; a coordinate copied from TERRA or
-     QGIS therefore lands on its record. Layers of another source, such as OpenStreetMap,
-     are left out of that list, which would otherwise reveal what a hidden `matched`
-     column holds. The record list can be ordered by distance to the location. A pair
-     given longitude first is turned round when only that order falls within the layer. A
-     map capture with the diamond in view shows it, and the legend gives its distance from
-     the record.
+   - **The map** draws every layer of the open register (the point layers whose
+     identifier column has the same name: `schools_cnefe` and `health_cnefe` share
+     `cnefe_id`), each in the colour TERRA gives it in the same file. Hovering a point
+     names it and its layer; pressing it opens that record, switching layer if needed; a
+     right-click copies "lat, lon" of the place under the pointer, ready to paste into
+     Google Maps. The open record is the larger dot under the yellow crosshair, and a
+     record with an answer has a white ring. A thin bar at the top of the map shows while
+     imagery or layers are loading. Other layers of the GeoPackage are added from the
+     Layers menu; OpenStreetMap layers are not drawn by default, since their points would
+     tell the annotator what a hidden `matched` column holds.
+   - **Paste a location** into the field over the map, or press `⌘V` anywhere outside a
+     text field (`L` focuses the field). It reads `-7.546178, -63.067186` as Google Maps
+     copies it, decimal commas (`-7,546178; -63,067186`), degrees, minutes and seconds
+     (`7°32'46.2"S 63°04'01.9"W`) and Google Maps links. When a record of the register
+     lies within 1 m, as when the coordinate was copied from TERRA or QGIS, that record
+     opens. Anywhere else the map flies there, marks the place with a blue diamond, and a
+     note gives the nearest record and the distance from the open one; the mark goes away
+     with the next record. A pair given longitude first is turned round when only that
+     order falls within the layer. A map capture with the diamond in view shows it, and
+     its legend gives the distance from the record.
    - **1** to **9** choose the category; type what Google Maps shows at the point and any notes.
    - **⌘↵** saves and moves to the next record; **⌥↓ / ⌥↑** move without leaving the form
      (unsaved changes are saved first). **F** shows both screenshots full size; **M**

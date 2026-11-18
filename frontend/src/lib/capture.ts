@@ -29,7 +29,7 @@ export function scaleBar(mpp: number, maxPx: number): { meters: number; px: numb
 
 export interface LegendItem {
   label: string
-  kind: "crosshair" | "pasted" | "record" | "saved" | "line" | "point" | "area"
+  kind: "crosshair" | "pasted" | "categorized" | "line" | "point" | "area"
   color?: string
 }
 
@@ -149,22 +149,20 @@ function drawLegendMark(
       ctx.scale(0.5, 0.5)
       drawPastedMark(ctx, 0, 0, s)
       break
-    case "record":
-    case "saved":
+    case "categorized":
+      // The map's white ring, with a thin dark edge so it shows on the white strip.
       ctx.beginPath()
       ctx.arc(x + 9 * s, y, 4.5 * s, 0, Math.PI * 2)
-      ctx.fillStyle = item.kind === "record" ? "#fff" : "#000"
-      ctx.strokeStyle = item.kind === "record" ? "#000" : "#fff"
-      ctx.lineWidth = 1.5 * s
+      ctx.fillStyle = "#999"
       ctx.fill()
+      ctx.strokeStyle = "#fff"
+      ctx.lineWidth = 2 * s
       ctx.stroke()
-      if (item.kind === "saved") {
-        ctx.beginPath()
-        ctx.arc(x + 9 * s, y, 6 * s, 0, Math.PI * 2)
-        ctx.strokeStyle = "#000"
-        ctx.lineWidth = 1 * s
-        ctx.stroke()
-      }
+      ctx.beginPath()
+      ctx.arc(x + 9 * s, y, 5.8 * s, 0, Math.PI * 2)
+      ctx.strokeStyle = "#141414"
+      ctx.lineWidth = 0.8 * s
+      ctx.stroke()
       break
     case "line":
       ctx.strokeStyle = item.color ?? "#000"
@@ -240,15 +238,13 @@ export function composeCapture(
   ctx.fillStyle = "#222"
   ctx.fillText(fit(ctx, caption.subtitle, textW), pad, y)
   y += 15 * s
-  ctx.fillText(
-    fit(ctx, `${formatPosition(caption.lon, caption.lat)} (WGS 84)`, textW),
-    pad,
-    y
-  )
-  y += 15 * s
-  const view =
-    `basemap: ${caption.basemap} · zoom ${caption.zoom.toFixed(1)} · north up` +
+  // The capture time sits beside the position, the line least likely to be cut.
+  const where =
+    `${formatPosition(caption.lon, caption.lat)} (WGS 84)` +
     ` · captured ${formatTime(capturedAt.toISOString())}`
+  ctx.fillText(fit(ctx, where, textW), pad, y)
+  y += 15 * s
+  const view = `${caption.basemap} · zoom ${caption.zoom.toFixed(1)} · north up`
   ctx.fillText(fit(ctx, view, textW), pad, y)
   y += 16 * s
 
