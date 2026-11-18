@@ -11,6 +11,7 @@ import (
 	_ "image/gif"  // decodes the size of a GIF screenshot
 	_ "image/jpeg" // decodes the size of a JPEG screenshot
 	_ "image/png"  // decodes the size of a PNG screenshot
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -167,15 +168,33 @@ func (p *Project) addImage(layer string, fid int64, side Side, data []byte, orig
 	}
 	sum := sha256.Sum256(data)
 	t := time.Now().UTC()
-	rel := path.Join(ImagesDir, unsafeName.ReplaceAllString(layer, "_"), fmt.Sprint(fid),
-		fmt.Sprintf("%s-%s%s", side, t.Format("20060102T150405.000Z"), ext))
-	abs := filepath.Join(p.dir, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+	folder := path.Join(ImagesDir, unsafeName.ReplaceAllString(layer, "_"), fmt.Sprint(fid))
+	if err := os.MkdirAll(filepath.Join(p.dir, filepath.FromSlash(folder)), 0o755); err != nil {
 		return nil, fmt.Errorf("save screenshot: %w", err)
 	}
-	// O_EXCL: a name is never reused, so a file once referenced by the
-	// history is never overwritten.
-	f, err := os.OpenFile(abs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	/*
+		O_EXCL: a name is never reused, so a file once referenced by the
+		history is never overwritten. Two screenshots of one side within the
+		same millisecond (a paste pressed twice) take the next free number
+		after the time instead of failing.
+	*/
+	stem := fmt.Sprintf("%s-%s", side, t.Format("20060102T150405.000Z"))
+	var (
+		rel, abs string
+		f        *os.File
+	)
+	for n := 1; n <= 100; n++ {
+		name := stem + ext
+		if n > 1 {
+			name = fmt.Sprintf("%s-%d%s", stem, n, ext)
+		}
+		rel = path.Join(folder, name)
+		abs = filepath.Join(p.dir, filepath.FromSlash(rel))
+		f, err = os.OpenFile(abs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if !errors.Is(err, fs.ErrExist) {
+			break
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("save screenshot: %w", err)
 	}

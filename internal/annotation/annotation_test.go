@@ -250,3 +250,18 @@ func TestAMapCaptureKeepsTheDateAndSourceOfItsImagery(t *testing.T) {
 		t.Fatalf("a pasted screenshot = %+v, %v", pasted, err)
 	}
 }
+
+func TestScreenshotsOfOneSideInTheSameMillisecondKeepSeparateFiles(t *testing.T) {
+	p, _ := newProject(t)
+	seen := map[string]bool{}
+	for i := 0; i < 20; i++ {
+		img, err := p.AddImage("schools", 3, SideReference, pngBytes(t, 2, 2), OriginClipboard, "")
+		if err != nil {
+			t.Fatalf("screenshot %d: %v", i, err)
+		}
+		if seen[img.Path] {
+			t.Fatalf("screenshot %d reused %s", i, img.Path)
+		}
+		seen[img.Path] = true
+	}
+}
