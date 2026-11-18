@@ -12,6 +12,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -31,6 +32,13 @@ func main() {
 		MinWidth:         1100,
 		MinHeight:        700,
 		BackgroundColour: &options.RGBA{R: 17, G: 17, B: 19, A: 1},
+		/*
+			TERRA_NOTATION_START_HIDDEN=1 keeps the window off the screen. Under
+			wails dev the page is also served at http://localhost:34115 with
+			working bindings, so it can be driven from a headless browser while
+			someone else is using the machine.
+		*/
+		StartHidden: os.Getenv("TERRA_NOTATION_START_HIDDEN") == "1",
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 			/*
