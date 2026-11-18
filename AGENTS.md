@@ -7,7 +7,7 @@ for the part you are about to change.
 
 ## The project
 
-TERRA Notation is a Wails v2 desktop application with one user and one machine, and no
+TERRA Point Check is a Wails v2 desktop application with one user and one machine, and no
 server. It annotates the points of a GeoPackage against current imagery and keeps the
 answers and screenshots in a project folder.
 
@@ -100,7 +100,7 @@ npx tsc --noEmit
 npm test
 ```
 
-The application: `wails build` at the root produces `build/bin/TERRA Notation.app`.
+The application: `wails build` at the root produces `build/bin/TERRA Point Check.app`.
 
 ## Commits
 

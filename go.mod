@@ -1,4 +1,4 @@
-module terra-notation
+module terra-point-check
 
 go 1.26.0
 

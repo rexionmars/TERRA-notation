@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"terra-notation/internal/annotation"
-	"terra-notation/internal/gpkg"
+	"terra-point-check/internal/annotation"
+	"terra-point-check/internal/gpkg"
 )
 
 // Summaries lists the records of a layer that have an annotation or a

@@ -1,6 +1,6 @@
 # Architecture
 
-TERRA Notation is a local desktop application. A Wails v2 binary hosts a React page in the
+TERRA Point Check is a local desktop application. A Wails v2 binary hosts a React page in the
 system web view; the page calls Go methods through generated bindings. There is no server,
 and the only network traffic is basemap tiles.
 
@@ -147,7 +147,7 @@ tested with Vitest.
     `wails://`, did not reproduce it.
 - **Page log** (`lib/pageLog.ts`, `app_pagelog.go`). Uncaught errors, map errors, tile
   errors (counted, written every 10 s) and a map still loading after 20 s, with the state
-  of every source's tiles, are appended to `~/Library/Logs/TERRA-Notation/page.log`. The
+  of every source's tiles, are appended to `~/Library/Logs/TERRA-Point-Check/page.log`. The
   web view's console cannot be opened in the packaged application; this file can be
   read after a failure.
 - **Basemaps** (`lib/basemaps.ts`) all serve CORS headers, without which the canvas could

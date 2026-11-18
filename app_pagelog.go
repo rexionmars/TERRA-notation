@@ -25,13 +25,13 @@ func pageLogPath() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, "Library", "Logs", "TERRA-Notation", "page.log"), nil
+		return filepath.Join(home, "Library", "Logs", appFolder, "page.log"), nil
 	}
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "TERRA-Notation", "page.log"), nil
+	return filepath.Join(dir, appFolder, "page.log"), nil
 }
 
 // LogPageProblem appends one line from the page to the page log. Writing it

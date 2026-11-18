@@ -3,7 +3,7 @@ package main
 import (
 	"path/filepath"
 
-	"terra-notation/internal/exports"
+	"terra-point-check/internal/exports"
 )
 
 // Export writes the project's annotations into a new folder under

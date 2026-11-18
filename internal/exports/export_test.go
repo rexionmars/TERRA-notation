@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"terra-notation/internal/annotation"
-	"terra-notation/internal/gpkg"
+	"terra-point-check/internal/annotation"
+	"terra-point-check/internal/gpkg"
 )
 
 func TestAnExportCarriesTheAnswersTheHistoryAndTheSourceAttributes(t *testing.T) {

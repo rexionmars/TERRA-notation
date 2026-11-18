@@ -1,4 +1,4 @@
-# TERRA Notation
+# TERRA Point Check
 
 A desktop application for checking the points of a GeoPackage against current imagery,
 one record at a time. It was written to check the schools and health facilities of the
@@ -26,10 +26,15 @@ Go 1.26, Node 20.19 or later (Vite 7 needs it), and the Wails CLI v2.13.0
 (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0`).
 
 ```sh
-wails build                  # build/bin/TERRA Notation.app
+wails build                  # build/bin/TERRA Point Check.app
 wails dev                    # development, with the frontend reloading
-open -a "build/bin/TERRA Notation.app" --args /path/to/project-folder   # open a project directly
+open -a "build/bin/TERRA Point Check.app" --args /path/to/project-folder   # open a project directly
 ```
+
+The application was called TERRA Notation until version 0.1.0. Project folders made under
+that name open unchanged, and its list of recent projects carries over. macOS asks once
+more for Screen Recording permission, since the permission belongs to the application's
+identifier, which changed with the name and is now fixed in `build/darwin/Info.plist`.
 
 ## Working through a layer
 
@@ -133,7 +138,7 @@ enlarged.
 ## When something goes wrong
 
 The page writes what fails (map and tile errors, a map that stays loading for more than
-20 s, uncaught errors) to `~/Library/Logs/TERRA-Notation/page.log`, which Console.app also
+20 s, uncaught errors) to `~/Library/Logs/TERRA-Point-Check/page.log`, which Console.app also
 lists. Send that file with a description of what was on screen.
 
 ## Limits

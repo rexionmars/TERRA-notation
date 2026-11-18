@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"terra-notation/internal/annotation"
+	"terra-point-check/internal/annotation"
 )
 
 // The report is read by people, so a negative number carries the

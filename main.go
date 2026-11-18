@@ -1,5 +1,5 @@
 /*
-Command TERRA-Notation annotates the points of a GeoPackage against current
+Command TERRA-Point-Check checks the points of a GeoPackage against current
 map imagery.
 
 For each record (a school or a health facility in the CNEFE, for example) it
@@ -27,19 +27,19 @@ var assets embed.FS
 func main() {
 	app := NewApp()
 	err := wails.Run(&options.App{
-		Title:            "TERRA Notation",
+		Title:            "TERRA Point Check",
 		Width:            1480,
 		Height:           920,
 		MinWidth:         1100,
 		MinHeight:        700,
 		BackgroundColour: &options.RGBA{R: 14, G: 14, B: 14, A: 1}, // the page's ground, --p-sunk
 		/*
-			TERRA_NOTATION_START_HIDDEN=1 keeps the window off the screen. Under
+			TERRA_POINT_CHECK_START_HIDDEN=1 keeps the window off the screen. Under
 			wails dev the page is also served at http://localhost:34115 with
 			working bindings, so it can be driven from a headless browser while
 			someone else is using the machine.
 		*/
-		StartHidden: os.Getenv("TERRA_NOTATION_START_HIDDEN") == "1",
+		StartHidden: os.Getenv("TERRA_POINT_CHECK_START_HIDDEN") == "1",
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 			/*
@@ -72,8 +72,8 @@ func main() {
 			TitleBar:   mac.TitleBarHidden(),
 			Appearance: mac.NSAppearanceNameDarkAqua,
 			About: &mac.AboutInfo{
-				Title:   "TERRA Notation",
-				Message: "Annotation of GeoPackage points against current map imagery",
+				Title:   "TERRA Point Check",
+				Message: "Checks the points of a GeoPackage against current map imagery",
 			},
 		},
 	})

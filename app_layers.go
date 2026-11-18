@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"terra-notation/internal/gpkg"
+	"terra-point-check/internal/gpkg"
 )
 
 // LoadLayer reads every feature of a layer.

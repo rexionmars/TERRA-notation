@@ -12,8 +12,8 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"terra-notation/internal/annotation"
-	"terra-notation/internal/gpkg"
+	"terra-point-check/internal/annotation"
+	"terra-point-check/internal/gpkg"
 )
 
 // App holds the open project and the GeoPackage it annotates. Every
@@ -37,7 +37,7 @@ func NewApp() *App { return &App{} }
 
 /*
 startup opens the project folder given as the first argument, if there is
-one (open -a "TERRA Notation" --args <folder>). The page asks for the open
+one (open -a "TERRA Point Check" --args <folder>). The page asks for the open
 project when it loads, so it starts there instead of on the start screen.
 */
 func (a *App) startup(ctx context.Context) {

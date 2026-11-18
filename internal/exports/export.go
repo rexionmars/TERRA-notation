@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"terra-notation/internal/annotation"
-	"terra-notation/internal/gpkg"
+	"terra-point-check/internal/annotation"
+	"terra-point-check/internal/gpkg"
 )
 
 // Result lists what an export wrote.

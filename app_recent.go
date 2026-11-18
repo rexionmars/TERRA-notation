@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
 
-	"terra-notation/internal/annotation"
+	"terra-point-check/internal/annotation"
 )
 
 // RecentProject is one entry of the start screen's list.
@@ -20,13 +22,26 @@ type RecentProject struct {
 
 const maxRecent = 12
 
-func recentFile() (string, error) {
+/*
+appFolder names the application's folders under the user's configuration,
+cache and log folders. legacyAppFolder is the name the application had
+before (TERRA Notation): its recent list is read until the first project
+opened under the new name writes one of its own.
+*/
+const (
+	appFolder       = "TERRA-Point-Check"
+	legacyAppFolder = "TERRA-Notation"
+)
+
+func recentFileIn(folder string) (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "TERRA-Notation", "recent.json"), nil
+	return filepath.Join(dir, folder, "recent.json"), nil
 }
+
+func recentFile() (string, error) { return recentFileIn(appFolder) }
 
 func readRecent() []RecentProject {
 	path, err := recentFile()
@@ -34,6 +49,11 @@ func readRecent() []RecentProject {
 		return nil
 	}
 	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		if legacy, lerr := recentFileIn(legacyAppFolder); lerr == nil {
+			b, err = os.ReadFile(legacy)
+		}
+	}
 	if err != nil {
 		return nil
 	}

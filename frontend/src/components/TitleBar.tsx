@@ -40,7 +40,7 @@ export function TitleBar({
           className="size-6 shrink-0 object-contain"
         />
         <span className="font-display text-heading font-semibold tracking-[0.14em] whitespace-nowrap">
-          TERRA <span className="text-muted-foreground">Notation</span>
+          TERRA <span className="text-muted-foreground">Point Check</span>
         </span>
       </div>
       {path.map((step, i) => (

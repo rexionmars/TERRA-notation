@@ -7,8 +7,11 @@
         <string>{{.Info.ProductName}}</string>
         <key>CFBundleExecutable</key>
         <string>{{.OutputFilename}}</string>
+        <!-- Fixed rather than derived from the name: macOS ties the Screen
+             Recording permission to this identifier, so a renamed
+             application keeps the permission it was given. -->
         <key>CFBundleIdentifier</key>
-        <string>com.wails.{{safeBundleID .Name}}</string>
+        <string>com.wails.terra-point-check</string>
         <key>CFBundleVersion</key>
         <string>{{.Info.ProductVersion}}</string>
         <key>CFBundleGetInfoString</key>

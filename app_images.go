@@ -12,7 +12,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"terra-notation/internal/annotation"
+	"terra-point-check/internal/annotation"
 )
 
 // imageRoute is the URL prefix under which the page reads screenshots.
@@ -123,7 +123,7 @@ func (a *App) CaptureScreenRegion(layer string, fid int64, side string) (*annota
 	if err != nil {
 		return nil, err
 	}
-	tmp, err := os.MkdirTemp("", "terra-notation-capture-")
+	tmp, err := os.MkdirTemp("", "terra-point-check-capture-")
 	if err != nil {
 		return nil, fmt.Errorf("capture the screen: %w", err)
 	}
