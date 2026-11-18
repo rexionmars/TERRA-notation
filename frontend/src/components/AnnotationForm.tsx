@@ -126,7 +126,7 @@ export function AnnotationForm({
               aria-invalid={dateInvalid}
               disabled={notShown}
               value={notShown ? "" : form.reference_date}
-              placeholder={notShown ? "not shown" : "2023-03-14 or 2023-03"}
+              placeholder={notShown ? "not shown" : "2023-03-14"}
               onChange={(e) => onChange({ ...form, reference_date: e.target.value })}
               onBlur={() => {
                 const d = normalizeReferenceDate(form.reference_date)
