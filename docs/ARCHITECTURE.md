@@ -138,6 +138,13 @@ tested with Vitest.
   - Raster tiles appear without the 300 ms fade, and a bar along the top of the map
     shows from `dataloading` until `idle`, after 120 ms so that cached tiles do not flash
     it.
+  - Raster tiles are loaded as image elements (`refreshExpiredTiles: false`), not with
+    `fetch`. MapLibre runs at most 16 image requests at once and frees a place only when a
+    request settles; a flight cancels dozens of them. In headless WebKit the `fetch`
+    path left 61 failed requests after one 32 km flight and the image path none. The
+    packaged application once showed a black map with the loading bar on after such a
+    flight, which this was changed for; headless WebKit, served over http rather than
+    `wails://`, did not reproduce it.
 - **Basemaps** (`lib/basemaps.ts`) all serve CORS headers, without which the canvas could
   not be read. Where Esri World Imagery has no imagery at a zoom, it answers with a grey
   "Map data not yet available" tile. At Humaitá (AM) its finest level is 17, and levels 18

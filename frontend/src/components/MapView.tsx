@@ -213,6 +213,15 @@ export function MapView({
       zoom: 4,
       maxZoom: 21,
       fadeDuration: 0,
+      /*
+        Raster tiles are loaded as image elements rather than with fetch. A
+        tile request MapLibre cancels (every flight and every quick move
+        cancels many) frees its place among the 16 it runs at once only when
+        the request settles; an image element is let go at once, whatever the
+        network does. The cost is that an expired tile is not fetched again
+        while the map stays open.
+      */
+      refreshExpiredTiles: false,
       // North stays up, so a picture needs no north arrow beyond "north up".
       dragRotate: false,
       pitchWithRotate: false,
