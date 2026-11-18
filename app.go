@@ -26,6 +26,10 @@ type App struct {
 	source  *gpkg.File
 	// sourceErr says why the GeoPackage could not be opened, when it could not.
 	sourceErr string
+	// layerJSON caches whole layers as GeoJSON for the map, by layer name and
+	// kept columns. It is emptied whenever the source or the hidden columns
+	// change.
+	layerJSON map[string][]byte
 }
 
 // NewApp creates the application.
@@ -145,6 +149,7 @@ func (a *App) attach(p *annotation.Project) error {
 	}
 	a.project = p
 	a.sourceErr = ""
+	a.layerJSON = nil
 	if f, err := gpkg.Open(src.Path); err != nil {
 		a.sourceErr = err.Error()
 	} else {
@@ -331,6 +336,9 @@ func (a *App) UpdateSettings(s annotation.Settings) (*ProjectState, error) {
 	if err := p.UpdateSettings(s); err != nil {
 		return nil, err
 	}
+	a.mu.Lock()
+	a.layerJSON = nil
+	a.mu.Unlock()
 	return a.state()
 }
 

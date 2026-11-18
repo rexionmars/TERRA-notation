@@ -12,6 +12,7 @@ package main
 
 import (
 	"embed"
+	"net/http"
 	"os"
 
 	"github.com/wailsapp/wails/v2"
@@ -42,13 +43,15 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 			/*
-				Screenshots are fetched over HTTP from the project folder rather
-				than returned by a bound method, which would carry them to the
-				page as base64 strings. Middleware rather than Handler: Handler is
+				Screenshots and whole layers are fetched over HTTP rather than
+				returned by a bound method, which would carry them to the page as
+				strings for the page to parse. Middleware rather than Handler: Handler is
 				reached only when Assets misses, and a single-page build answers
 				every unknown path with index.html.
 			*/
-			Middleware: app.imageMiddleware,
+			Middleware: func(next http.Handler) http.Handler {
+				return app.imageMiddleware(app.layerMiddleware(next))
+			},
 		},
 		/*
 			A file dropped on the window reaches the page as its path. Only an

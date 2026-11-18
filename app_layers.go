@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"slices"
+	"strings"
 
 	"terra-notation/internal/gpkg"
 )
@@ -85,4 +88,64 @@ func (a *App) NearestRecords(layers []string, lon, lat float64, limit int) ([]Ne
 		out = append(out, rec)
 	}
 	return out, nil
+}
+
+// layerRoute is the URL prefix under which the map reads whole layers.
+const layerRoute = "/layer-geojson/"
+
+/*
+layerMiddleware serves a whole layer as GeoJSON, without the columns hidden
+while annotating. The map is given the URL rather than the data, so MapLibre
+parses it in its worker and the page does not stop while it does; TERRA
+measured a 12 s freeze when a large layer was handed over as an object.
+*/
+func (a *App) layerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, layerRoute) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		name, err := url.PathUnescape(strings.TrimPrefix(r.URL.Path, layerRoute))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		b, err := a.layerGeoJSON(name, r.URL.Query()["keep"])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/geo+json")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(b)
+	})
+}
+
+func (a *App) layerGeoJSON(name string, keep []string) ([]byte, error) {
+	cacheKey := name + "?" + strings.Join(keep, ",")
+	a.mu.Lock()
+	if b, ok := a.layerJSON[cacheKey]; ok {
+		a.mu.Unlock()
+		return b, nil
+	}
+	a.mu.Unlock()
+	p, src, err := a.openSource()
+	if err != nil {
+		return nil, err
+	}
+	settings, err := p.Settings()
+	if err != nil {
+		return nil, err
+	}
+	b, err := src.GeoJSON(name, settings.Layers[name].HiddenColumns, keep)
+	if err != nil {
+		return nil, err
+	}
+	a.mu.Lock()
+	if a.layerJSON == nil {
+		a.layerJSON = map[string][]byte{}
+	}
+	a.layerJSON[cacheKey] = b
+	a.mu.Unlock()
+	return b, nil
 }
