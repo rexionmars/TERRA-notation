@@ -325,3 +325,29 @@ func TestNearestSearchesEveryNamedLayerAndWidensTheBoxUntilItIsSure(t *testing.T
 		t.Fatalf("a search of one layer returned %+v", only)
 	}
 }
+
+func TestLayersComeInTheOrderTheFileListsThem(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "order.gpkg")
+	w, err := Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"zeta", "alpha", "mid"} {
+		if err := w.AddPointLayer(name, "", nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = w.Close()
+	f, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	var got []string
+	for _, l := range f.Layers() {
+		got = append(got, l.Name)
+	}
+	if strings.Join(got, ",") != "zeta,alpha,mid" {
+		t.Fatalf("order = %v", got)
+	}
+}

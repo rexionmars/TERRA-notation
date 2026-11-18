@@ -91,7 +91,9 @@ func (f *File) Close() error { return f.db.Close() }
 // Path is the file the GeoPackage was opened from.
 func (f *File) Path() string { return f.path }
 
-// Layers lists the feature layers in name order.
+// Layers lists the feature layers in the order the file lists them: the
+// rows of gpkg_contents, in the order the writer added them, which is the
+// order QGIS and TERRA show them in and the order TERRA gives out colours.
 func (f *File) Layers() []Layer {
 	out := make([]Layer, len(f.layers))
 	for i, l := range f.layers {
@@ -114,7 +116,7 @@ func (f *File) loadLayers() error {
 		JOIN gpkg_geometry_columns g ON g.table_name = c.table_name
 		LEFT JOIN gpkg_spatial_ref_sys s ON s.srs_id = g.srs_id
 		WHERE c.data_type = 'features'
-		ORDER BY c.table_name`)
+		ORDER BY c.rowid`)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table") {
 			return errors.New("the file is not a GeoPackage: it has no gpkg_contents or gpkg_geometry_columns table")
