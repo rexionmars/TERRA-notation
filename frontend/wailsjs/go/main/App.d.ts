@@ -3,6 +3,7 @@
 import {annotation} from '../models';
 import {gpkg} from '../models';
 import {main} from '../models';
+import {imagery} from '../models';
 import {exports} from '../models';
 
 export function CaptureScreenRegion(arg1:string,arg2:number,arg3:string):Promise<annotation.Image>;
@@ -16,6 +17,8 @@ export function CreateProject(arg1:main.NewProject):Promise<main.ProjectState>;
 export function CurrentProject():Promise<main.ProjectState>;
 
 export function DefaultAnnotator():Promise<string>;
+
+export function EsriImagery(arg1:number,arg2:number):Promise<Array<imagery.Source>>;
 
 export function Export():Promise<exports.Result>;
 
@@ -55,7 +58,7 @@ export function Reveal(arg1:string):Promise<void>;
 
 export function SaveAnnotation(arg1:annotation.Draft):Promise<annotation.Entry>;
 
-export function SaveMapCapture(arg1:string,arg2:number,arg3:string,arg4:string):Promise<annotation.Image>;
+export function SaveMapCapture(arg1:string,arg2:number,arg3:string,arg4:string,arg5:annotation.Imagery):Promise<annotation.Image>;
 
 export function Summaries(arg1:string):Promise<Array<annotation.Summary>>;
 

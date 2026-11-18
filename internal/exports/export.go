@@ -248,8 +248,8 @@ func writeCurrentCSV(path string, ld layerData, labels map[string]string, info a
 	header := []string{"layer", "fid", "record_id", "record_name", "lon", "lat", "category", "category_label",
 		"first_category", "revisions", "reference_label", "reference_imagery_date", "reference_imagery_date_status",
 		"notes", "annotator", "created_at", "updated_at",
-		"source_image", "source_image_sha256", "reference_image", "reference_image_sha256",
-		"source_gpkg", "source_gpkg_sha256"}
+		"source_image", "source_image_sha256", "source_imagery_date", "source_imagery",
+		"reference_image", "reference_image_sha256", "source_gpkg", "source_gpkg_sha256"}
 	for _, c := range ld.columns {
 		header = append(header, "gpkg_"+c.Name)
 	}
@@ -267,7 +267,11 @@ func writeCurrentCSV(path string, ld layerData, labels map[string]string, info a
 		}
 		sp, ss := imageCells(r.src)
 		rp, rs := imageCells(r.ref)
-		row = append(row, sp, ss, rp, rs, info.Source.Path, info.Source.SHA256)
+		var imageryDate, imagery string
+		if r.src != nil {
+			imageryDate, imagery = r.src.ImageryDate, r.src.ImagerySource
+		}
+		row = append(row, sp, ss, imageryDate, imagery, rp, rs, info.Source.Path, info.Source.SHA256)
 		for i := range ld.columns {
 			if r.row != nil {
 				row = append(row, cell(r.row.Values[i]))

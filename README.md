@@ -64,7 +64,10 @@ identifier, which changed with the name and is now fixed in `build/darwin/Info.p
      imagery or layers are loading. The column of buttons at the map's right edge zooms,
      chooses the basemap, shows place names, and adds other layers of the GeoPackage;
      OpenStreetMap layers are not drawn by default, since their points would tell the
-     annotator what a hidden `matched` column holds.
+     annotator what a hidden `matched` column holds. On Esri World Imagery the legend gives
+     the date, sensor, resolution and provider of the imagery at the open record for the
+     zoom in view (at Humaitá: 2025-04-14, WorldView-3, 0.31 m, Vantor), and a map capture
+     carries them in its strip and in the project.
    - **Paste a location** into the field over the map, or press `⌘V` anywhere outside a
      text field (`L` focuses the field). It reads `-7.546178, -63.067186` as Google Maps
      copies it, decimal commas (`-7,546178; -63,067186`), degrees, minutes and seconds
@@ -125,7 +128,7 @@ copy; it refuses the upgraded file.
 
 | File | Contents |
 |---|---|
-| `annotations_<layer>.csv` | one row per record with an answer or a screenshot: category and its label, first category, number of revisions, reference label, the date of the reference imagery and whether it was recorded, not shown or not recorded, notes, annotator, times, screenshot paths and SHA-256, the source file and its SHA-256, and every source attribute as `gpkg_<column>` |
+| `annotations_<layer>.csv` | one row per record with an answer or a screenshot: category and its label, first category, number of revisions, reference label, the date of the reference imagery and whether it was recorded, not shown or not recorded, the date and source of the Esri imagery in the map capture, notes, annotator, times, screenshot paths and SHA-256, the source file and its SHA-256, and every source attribute as `gpkg_<column>` |
 | `history_<layer>.csv` | every saved revision, in order, with the moment the record was opened before it |
 | `annotations.gpkg` | one point layer per annotated layer, `<layer>_annotations`, with the answer and the source attributes, for QGIS |
 | `report.html` | each record with its two screenshots side by side, grouped by category, with counts |
@@ -133,8 +136,10 @@ copy; it refuses the upgraded file.
 ## Network
 
 The application sends requests only for basemap tiles, to Esri (World Imagery, World
-Street Map, place names) and EOX (Sentinel-2 cloudless 2025); a tile request carries the
-area in view. Google Maps is opened in the browser and never loaded inside the
+Street Map, place names) and EOX (Sentinel-2 cloudless 2025), and, on World Imagery, for
+the date of the imagery at the open record, to the Citations layer of the same Esri
+service. A tile request carries the area in view; a date request carries the record's
+coordinates. Google Maps is opened in the browser and never loaded inside the
 application: Google's terms do not allow its tiles in another application's map, and the
 browser shows its latest imagery and place labels anyway.
 

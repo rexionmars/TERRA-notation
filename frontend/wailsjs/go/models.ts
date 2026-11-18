@@ -93,6 +93,8 @@ export namespace annotation {
 	    origin: string;
 	    detail: string;
 	    captured_at: string;
+	    imagery_date: string;
+	    imagery_source: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Image(source);
@@ -112,6 +114,8 @@ export namespace annotation {
 	        this.origin = source["origin"];
 	        this.detail = source["detail"];
 	        this.captured_at = source["captured_at"];
+	        this.imagery_date = source["imagery_date"];
+	        this.imagery_source = source["imagery_source"];
 	    }
 	}
 	export class Entry {
@@ -181,6 +185,20 @@ export namespace annotation {
 	    }
 	}
 	
+	export class Imagery {
+	    date: string;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Imagery(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.source = source["source"];
+	    }
+	}
 	export class LayerSettings {
 	    name_column: string;
 	    id_column: string;
@@ -614,6 +632,37 @@ export namespace gpkg {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace imagery {
+	
+	export class Source {
+	    date: string;
+	    sensor: string;
+	    product: string;
+	    provider: string;
+	    resolution_m: number;
+	    accuracy_m: number;
+	    min_level: number;
+	    max_level: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Source(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.sensor = source["sensor"];
+	        this.product = source["product"];
+	        this.provider = source["provider"];
+	        this.resolution_m = source["resolution_m"];
+	        this.accuracy_m = source["accuracy_m"];
+	        this.min_level = source["min_level"];
+	        this.max_level = source["max_level"];
+	    }
 	}
 
 }

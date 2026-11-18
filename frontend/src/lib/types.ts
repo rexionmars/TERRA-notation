@@ -115,6 +115,28 @@ export interface Image {
   origin: string
   detail: string
   captured_at: string
+  /** YYYY-MM-DD of the basemap imagery in a map capture; "" otherwise */
+  imagery_date: string
+  imagery_source: string
+}
+
+/** What a map capture records of the imagery at the record. */
+export interface Imagery {
+  date: string
+  source: string
+}
+
+/** One source of Esri's World Imagery at a point (internal/imagery). */
+export interface ImagerySource {
+  /** YYYY-MM-DD; "" when Esri gives none */
+  date: string
+  sensor: string
+  product: string
+  provider: string
+  resolution_m: number
+  accuracy_m: number
+  min_level: number
+  max_level: number
 }
 
 export interface Annotation {

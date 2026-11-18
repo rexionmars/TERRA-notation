@@ -151,6 +151,12 @@ func writeReport(file, exportDir, projectDir string, all []layerData, labels map
 		if img.Detail != "" {
 			caption += " \u00b7 " + img.Detail
 		}
+		if img.ImageryDate != "" {
+			caption += " \u00b7 imagery of " + img.ImageryDate
+			if img.ImagerySource != "" {
+				caption += " (" + img.ImagerySource + ")"
+			}
+		}
 		return &reportImage{Src: path.Join(filepath.ToSlash(rel), img.Path), Caption: caption}
 	}
 	order := map[string]int{}

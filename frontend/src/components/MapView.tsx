@@ -176,6 +176,7 @@ export function MapView({
   onPick,
   onCopyPosition,
   onMessage,
+  onZoom,
 }: {
   ref?: Ref<MapHandle>
   layers: MapLayer[]
@@ -189,6 +190,8 @@ export function MapView({
   onPick: (layer: string, fid: number) => void
   onCopyPosition: (lon: number, lat: number) => void
   onMessage: (text: string) => void
+  /** the zoom once a change of it ends, and when the map is ready */
+  onZoom?: (zoom: number) => void
 }) {
   const container = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MLMap | null>(null)
@@ -198,8 +201,8 @@ export function MapView({
   const [loading, setLoading] = useState(false)
   const [hover, setHover] = useState<Hover | null>(null)
   // Read by handlers bound once, when the map is made.
-  const live = useRef({ layers, onPick, onCopyPosition, onMessage })
-  live.current = { layers, onPick, onCopyPosition, onMessage }
+  const live = useRef({ layers, onPick, onCopyPosition, onMessage, onZoom })
+  live.current = { layers, onPick, onCopyPosition, onMessage, onZoom }
   // Feature state written so far, so a change writes only the difference.
   const applied = useRef(new Map<string, Set<number>>())
   const picked = useRef<{ source: string; id: number } | null>(null)
@@ -369,7 +372,11 @@ export function MapView({
       e.preventDefault()
       live.current.onCopyPosition(e.lngLat.lng, e.lngLat.lat)
     })
-    map.on("load", () => setReady(true))
+    map.on("load", () => {
+      setReady(true)
+      live.current.onZoom?.(map.getZoom())
+    })
+    map.on("zoomend", () => live.current.onZoom?.(map.getZoom()))
     mapRef.current = map
 
     const resize = new ResizeObserver(() => map.resize())

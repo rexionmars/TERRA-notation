@@ -53,6 +53,19 @@ type Image struct {
 	Origin     string `json:"origin"`
 	Detail     string `json:"detail"`
 	CapturedAt string `json:"captured_at"`
+	// ImageryDate and ImagerySource describe the basemap imagery a map
+	// capture shows at the record, as its provider gives them; both are
+	// empty for every other screenshot and when the provider gave nothing.
+	ImageryDate   string `json:"imagery_date"`
+	ImagerySource string `json:"imagery_source"`
+}
+
+// Imagery is what the basemap's provider says about the imagery at a record.
+type Imagery struct {
+	// Date is YYYY-MM-DD, or "" when the provider gives none.
+	Date string `json:"date"`
+	// Source names the sensor, resolution and provider in one line.
+	Source string `json:"source"`
 }
 
 // The origins of a screenshot.
@@ -83,13 +96,14 @@ func imageExtension(data []byte) (string, error) {
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9_.-]+`)
 
-const imageColumns = `id, layer, fid, side, path, sha256, bytes, width, height, origin, detail, captured_at`
+const imageColumns = `id, layer, fid, side, path, sha256, bytes, width, height, origin, detail, captured_at,
+	imagery_date, imagery_source`
 
 func scanImage(s interface{ Scan(...any) error }) (*Image, error) {
 	var img Image
 	var w, h sql.NullInt64
 	if err := s.Scan(&img.ID, &img.Layer, &img.FID, &img.Side, &img.Path, &img.SHA256, &img.Bytes,
-		&w, &h, &img.Origin, &img.Detail, &img.CapturedAt); err != nil {
+		&w, &h, &img.Origin, &img.Detail, &img.CapturedAt, &img.ImageryDate, &img.ImagerySource); err != nil {
 		return nil, err
 	}
 	if w.Valid && h.Valid {
@@ -126,6 +140,21 @@ func (p *Project) Image(id int64) (*Image, error) {
 // AddImage stores a screenshot as the current one of its side. The one it
 // replaces keeps its file and row.
 func (p *Project) AddImage(layer string, fid int64, side Side, data []byte, origin, detail string) (*Image, error) {
+	return p.addImage(layer, fid, side, data, origin, detail, Imagery{})
+}
+
+// AddMapCapture stores the picture of the application's map as the current
+// layer-side screenshot, with what is known of the imagery at the record.
+func (p *Project) AddMapCapture(layer string, fid int64, data []byte, detail string, imagery Imagery) (*Image, error) {
+	if imagery.Date != "" {
+		if _, err := time.Parse("2006-01-02", imagery.Date); err != nil {
+			return nil, fmt.Errorf("the imagery date %q is not YYYY-MM-DD", imagery.Date)
+		}
+	}
+	return p.addImage(layer, fid, SideSource, data, OriginAppMap, detail, imagery)
+}
+
+func (p *Project) addImage(layer string, fid int64, side Side, data []byte, origin, detail string, imagery Imagery) (*Image, error) {
 	if len(data) == 0 {
 		return nil, errors.New("the screenshot is empty")
 	}
@@ -173,9 +202,11 @@ func (p *Project) AddImage(layer string, fid int64, side Side, data []byte, orig
 		stamp, layer, fid, side); err != nil {
 		return nil, fmt.Errorf("save screenshot: %w", err)
 	}
-	res, err := tx.Exec(`INSERT INTO image (layer, fid, side, path, sha256, bytes, width, height, origin, detail, captured_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		layer, fid, side, rel, hex.EncodeToString(sum[:]), len(data), width, height, origin, strings.TrimSpace(detail), stamp)
+	res, err := tx.Exec(`INSERT INTO image (layer, fid, side, path, sha256, bytes, width, height, origin, detail,
+		captured_at, imagery_date, imagery_source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		layer, fid, side, rel, hex.EncodeToString(sum[:]), len(data), width, height, origin, strings.TrimSpace(detail),
+		stamp, imagery.Date, strings.TrimSpace(imagery.Source))
 	if err != nil {
 		return nil, fmt.Errorf("save screenshot: %w", err)
 	}

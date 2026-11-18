@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import type { MapLayer } from "@/components/MapView"
 
 /**
@@ -9,10 +10,13 @@ export function MapLegend({
   layers,
   activeLayer,
   pasted,
+  imagery,
 }: {
   layers: MapLayer[]
   activeLayer: string
   pasted: boolean
+  /** what is known of the basemap imagery at the record, when it is Esri's */
+  imagery?: ReactNode
 }) {
   return (
     <div className="map-chrome pointer-events-none absolute bottom-8 left-2 z-10 flex max-w-[60%] flex-col gap-0.5 rounded-md border border-[rgb(var(--p-line)/0.28)] px-2.5 py-2 text-meta text-foreground shadow-[0_2px_8px_rgb(0_0_0/0.28)]">
@@ -39,6 +43,11 @@ export function MapLegend({
           </span>
         </div>
       ))}
+      {imagery && (
+        <div className="mt-1 border-t border-hairline pt-1.5 text-muted-foreground">
+          {imagery}
+        </div>
+      )}
       <div className="mt-1 flex items-center gap-1.5 border-t border-hairline pt-1.5">
         <span className="text-label leading-none text-mark">✛</span>
         <span>selected record</span>

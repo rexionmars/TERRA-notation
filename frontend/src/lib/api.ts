@@ -11,6 +11,8 @@ import type {
   ExportResult,
   HistoryEntry,
   Image,
+  Imagery,
+  ImagerySource,
   LayerSummary,
   NearRecord,
   NewProject,
@@ -57,8 +59,18 @@ export const api = {
   history: (layer: string, fid: number) => as<HistoryEntry[]>(App.History(layer, fid)),
   saveAnnotation: (d: Draft) => as<Entry>(App.SaveAnnotation(d as annotation.Draft)),
 
-  saveMapCapture: (layer: string, fid: number, dataURL: string, detail: string) =>
-    as<Image>(App.SaveMapCapture(layer, fid, dataURL, detail)),
+  saveMapCapture: (
+    layer: string,
+    fid: number,
+    dataURL: string,
+    detail: string,
+    imagery: Imagery
+  ) =>
+    as<Image>(
+      App.SaveMapCapture(layer, fid, dataURL, detail, imagery as annotation.Imagery)
+    ),
+  esriImagery: (lon: number, lat: number) =>
+    as<ImagerySource[]>(App.EsriImagery(lon, lat)),
   importImageFile: (layer: string, fid: number, side: Side, path: string) =>
     as<Image>(App.ImportImageFile(layer, fid, side, path)),
   pickImageFile: (layer: string, fid: number, side: Side) =>

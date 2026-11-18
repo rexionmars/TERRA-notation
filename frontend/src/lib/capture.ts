@@ -40,6 +40,8 @@ export interface CaptureCaption {
   lat: number
   basemap: string
   zoom: number
+  /** what the provider says of the imagery at the record, when it says anything */
+  imagery?: string
   legend: LegendItem[]
 }
 
@@ -244,7 +246,9 @@ export function composeCapture(
     ` · captured ${formatTime(capturedAt.toISOString())}`
   ctx.fillText(fit(ctx, where, textW), pad, y)
   y += 15 * s
-  const view = `${caption.basemap} · zoom ${caption.zoom.toFixed(1)} · north up`
+  const view =
+    `${caption.basemap} · zoom ${caption.zoom.toFixed(1)} · north up` +
+    (caption.imagery ? ` · ${caption.imagery}` : "")
   ctx.fillText(fit(ctx, view, textW), pad, y)
   y += 16 * s
 

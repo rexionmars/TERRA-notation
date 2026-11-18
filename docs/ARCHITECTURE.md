@@ -76,7 +76,7 @@ exports/<local date_time>/
 | `project` | key-value rows: schema version, name, creation time, the source file (path, SHA-256, size) and the settings as JSON |
 | `annotation` | the current answer per `(layer, fid)`: category, `first_category`, reference label, the date of the reference imagery, notes, annotator, times, revision, and a snapshot of the record's id, name and position read from the GeoPackage at save time |
 | `annotation_history` | one row per saved revision, with the screenshots current at that moment and `opened_at`, when the page opened the record before that save; triggers abort any `UPDATE` or `DELETE` |
-| `image` | one row per screenshot: path, SHA-256, size in bytes and pixels, origin (map, screen region, clipboard, file), capture time, and `removed_at` once it is no longer current |
+| `image` | one row per screenshot: path, SHA-256, size in bytes and pixels, origin (map, screen region, clipboard, file), capture time, for a map capture the date and source of the imagery at the record, and `removed_at` once it is no longer current |
 
 Rules the code keeps:
 
@@ -195,6 +195,24 @@ tested with Vitest.
 - **Keyboard.** One `keydown` listener reads the latest handlers through a ref. `⌘V`
   outside a text field reads the clipboard text first: coordinates move the map, and
   anything else is taken as an image for the active slot.
+
+## The date of the imagery
+
+The tiles of Esri World Imagery carry no date, and the same place can show a 2025 image at
+one zoom and an undated 15 m mosaic at another. `internal/imagery` asks the Citations
+layer (id 4) of the World Imagery MapServer for the sources drawn at the open record. Each
+comes with `SRC_DATE` (YYYYMMDD), the sensor, the resolution, the provider and the tile
+levels it is drawn at (`MinMapLevel`, `MaxMapLevel`, in 256 px tiles). At Humaitá, AM, in
+November 2026 the answer was WorldView-3 at 0.31 m from 2025-04-14 for levels 12 to 17,
+and Earthstar's TerraColor at 15 m, without a date, for levels 0 to 11.
+
+`lib/imagery.ts` picks the source the map draws: MapLibre counts zoom in 512 px tiles and
+rounds a raster source's level, so at zoom z it asks for level round(z + 1); above the
+finest level it enlarges that level, so a level past every range is the finest source. The
+legend shows the result for the zoom in view; a capture asks again for its own zoom and
+keeps the date and source in `image.imagery_date` and `image.imagery_source`. When Esri
+does not answer, the legend and the capture strip say so with the reason, and the columns
+stay empty.
 
 ## The interface's design
 

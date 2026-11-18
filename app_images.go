@@ -53,8 +53,8 @@ func (a *App) imageMiddleware(next http.Handler) http.Handler {
 }
 
 // SaveMapCapture stores the picture of the application's map, sent by the
-// page as a data URL.
-func (a *App) SaveMapCapture(layer string, fid int64, dataURL, detail string) (*annotation.Image, error) {
+// page as a data URL, with what Esri said of the imagery at the record.
+func (a *App) SaveMapCapture(layer string, fid int64, dataURL, detail string, imagery annotation.Imagery) (*annotation.Image, error) {
 	p, _, err := a.open()
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func (a *App) SaveMapCapture(layer string, fid int64, dataURL, detail string) (*
 	if err != nil {
 		return nil, fmt.Errorf("decode the map picture: %w", err)
 	}
-	return p.AddImage(layer, fid, annotation.SideSource, data, annotation.OriginAppMap, detail)
+	return p.AddMapCapture(layer, fid, data, detail, imagery)
 }
 
 // ImportImageFile stores an image file, dropped on a slot or chosen in a

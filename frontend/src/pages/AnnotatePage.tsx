@@ -9,6 +9,7 @@ import {
 import { api, errorText, imageURL } from "@/lib/api"
 import { BASEMAPS } from "@/lib/basemaps"
 import { composeCapture, type LegendItem } from "@/lib/capture"
+import { describeSource, sourceAt } from "@/lib/imagery"
 import { distanceMeters, parseLocation, type Extent } from "@/lib/coordinates"
 import { layerColor } from "@/lib/palette"
 import {
@@ -26,6 +27,8 @@ import type {
   ExportResult,
   HistoryEntry,
   Image,
+  Imagery,
+  ImagerySource,
   Layer,
   LayerSettings,
   NearRecord,
@@ -123,6 +126,9 @@ function layerURL(name: string, keep: string | null): string {
   const path = `/layer-geojson/${encodeURIComponent(name)}`
   return keep === null ? path : `${path}?keep=${encodeURIComponent(keep)}`
 }
+
+// What Esri said of its imagery at a point, or why it said nothing.
+type ImageryAnswer = { sources: ImagerySource[] } | { reason: string }
 
 function isTyping(t: EventTarget | null): boolean {
   return (
@@ -561,6 +567,74 @@ export function AnnotatePage({
   }
 
   const basemapLabel = BASEMAPS.find((b) => b.id === basemap)?.label ?? basemap
+
+  // ---- the date of the imagery -----------------------------------------------
+
+  /*
+    Esri's imagery has a date at each place, which the tiles do not show. It is
+    read for the open record when the basemap is World Imagery, shown in the
+    legend, and kept with a capture of the map.
+  */
+  const imageryAnswers = useRef(new Map<string, Promise<ImageryAnswer>>())
+  const imageryFor = (lon: number, lat: number): Promise<ImageryAnswer> => {
+    const k = `${lon},${lat}`
+    let p = imageryAnswers.current.get(k)
+    if (!p) {
+      p = api.esriImagery(lon, lat).then(
+        (sources) => ({ sources }),
+        (e) => {
+          // A failure is not kept, so the next look at the record asks again.
+          imageryAnswers.current.delete(k)
+          return { reason: errorText(e) }
+        }
+      )
+      imageryAnswers.current.set(k, p)
+    }
+    return p
+  }
+  const [imagery, setImagery] = useState<ImageryAnswer | "reading" | null>(null)
+  const [mapZoom, setMapZoom] = useState<number | null>(null)
+  const recordLon = selected?.position?.[0]
+  const recordLat = selected?.position?.[1]
+  useEffect(() => {
+    if (
+      basemap !== "esri_imagery" ||
+      recordLon === undefined ||
+      recordLat === undefined
+    ) {
+      setImagery(null)
+      return
+    }
+    let cancelled = false
+    setImagery("reading")
+    void imageryFor(recordLon, recordLat).then((a) => !cancelled && setImagery(a))
+    return () => {
+      cancelled = true
+    }
+  }, [basemap, recordLon, recordLat])
+
+  /** The imagery at the record at a zoom, as kept with a capture and as read. */
+  const imageryAt = (
+    answer: ImageryAnswer | "reading" | null,
+    zoom: number | null
+  ): { kept: Imagery; text: string } | null => {
+    const none = { date: "", source: "" }
+    if (answer === null) return null
+    if (answer === "reading") return { kept: none, text: "Reading the imagery date…" }
+    if ("reason" in answer)
+      return { kept: none, text: `Imagery date not available: ${answer.reason}` }
+    const s = zoom === null ? null : sourceAt(answer.sources, zoom)
+    if (!s)
+      return { kept: none, text: "Esri lists no imagery at the record at this zoom" }
+    const source = describeSource(s)
+    return {
+      kept: { date: s.date, source },
+      text: s.date
+        ? `Imagery of ${s.date} at the record (${source})`
+        : `Imagery at the record has no date (${source})`,
+    }
+  }
+  const imageryNow = imageryAt(imagery, mapZoom)
   const drawnKey = drawnNames.join("\n")
   const mapLayers: MapLayer[] = useMemo(
     () =>
@@ -594,6 +668,13 @@ export function AnnotatePage({
     withImage(async () => {
       if (!table || fid === null || !selected?.position || !mapRef.current) return null
       const cap = await mapRef.current.capture()
+      const imageryShown =
+        basemap === "esri_imagery"
+          ? imageryAt(
+              await imageryFor(selected.position[0], selected.position[1]),
+              cap.zoom
+            )
+          : null
       const id = valueOf(selected, ls.id_column)
       const subtitle = [
         `layer ${table.layer}`,
@@ -638,6 +719,7 @@ export function AnnotatePage({
           lat: selected.position[1],
           basemap: basemapLabel,
           zoom: cap.zoom,
+          imagery: imageryShown?.text,
           legend,
         },
         new Date(),
@@ -647,7 +729,8 @@ export function AnnotatePage({
         table.layer,
         fid,
         dataURL,
-        `${basemapLabel}, zoom ${cap.zoom.toFixed(1)}`
+        `${basemapLabel}, zoom ${cap.zoom.toFixed(1)}`,
+        imageryShown?.kept ?? { date: "", source: "" }
       )
     }, "source")
 
@@ -1296,6 +1379,7 @@ export function AnnotatePage({
                   onPick={(l, n) => void openRecord(l, n)}
                   onCopyPosition={copyPosition}
                   onMessage={setContextMessage}
+                  onZoom={setMapZoom}
                 />
                 <LocationField
                   inputRef={locInput}
@@ -1311,6 +1395,7 @@ export function AnnotatePage({
                   layers={mapLayers}
                   activeLayer={table?.layer ?? ""}
                   pasted={pasted !== null}
+                  imagery={imageryNow?.text}
                 />
                 {contextMessage && (
                   <div className="map-chrome absolute top-12 left-2 z-10 rounded-sm border border-[rgb(var(--p-line)/0.28)] px-2 py-1 text-label text-foreground">

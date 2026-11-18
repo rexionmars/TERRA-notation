@@ -23,6 +23,10 @@ var migrations = []string{
 	`ALTER TABLE annotation ADD COLUMN reference_date TEXT NOT NULL DEFAULT '';
 ALTER TABLE annotation_history ADD COLUMN reference_date TEXT NOT NULL DEFAULT '';
 ALTER TABLE annotation_history ADD COLUMN opened_at TEXT;`,
+	// 3: the date and source of the basemap imagery a map capture shows at
+	// the record.
+	`ALTER TABLE image ADD COLUMN imagery_date TEXT NOT NULL DEFAULT '';
+ALTER TABLE image ADD COLUMN imagery_source TEXT NOT NULL DEFAULT '';`,
 }
 
 // schemaVersion is the version this build of the application writes.

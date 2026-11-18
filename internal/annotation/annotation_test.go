@@ -230,3 +230,23 @@ func TestAProjectReopensWithItsAnswers(t *testing.T) {
 		t.Fatalf("record = %+v", r.Annotation)
 	}
 }
+
+func TestAMapCaptureKeepsTheDateAndSourceOfItsImagery(t *testing.T) {
+	p, _ := newProject(t)
+	img, err := p.AddMapCapture("schools", 1, pngBytes(t, 4, 4), "Esri World Imagery, zoom 16.0",
+		Imagery{Date: "2025-04-14", Source: "WV03, 0.31 m, Vantor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if img.Origin != OriginAppMap || img.Side != SideSource || img.ImageryDate != "2025-04-14" ||
+		img.ImagerySource != "WV03, 0.31 m, Vantor" {
+		t.Fatalf("capture = %+v", img)
+	}
+	if _, err := p.AddMapCapture("schools", 1, pngBytes(t, 4, 4), "", Imagery{Date: "14/04/2025"}); err == nil {
+		t.Fatal("a date that is not YYYY-MM-DD was kept")
+	}
+	pasted, err := p.AddImage("schools", 1, SideReference, pngBytes(t, 4, 4), OriginClipboard, "")
+	if err != nil || pasted.ImageryDate != "" || pasted.ImagerySource != "" {
+		t.Fatalf("a pasted screenshot = %+v, %v", pasted, err)
+	}
+}

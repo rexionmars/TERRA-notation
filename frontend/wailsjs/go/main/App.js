@@ -26,6 +26,10 @@ export function DefaultAnnotator() {
   return window['go']['main']['App']['DefaultAnnotator']();
 }
 
+export function EsriImagery(arg1, arg2) {
+  return window['go']['main']['App']['EsriImagery'](arg1, arg2);
+}
+
 export function Export() {
   return window['go']['main']['App']['Export']();
 }
@@ -102,8 +106,8 @@ export function SaveAnnotation(arg1) {
   return window['go']['main']['App']['SaveAnnotation'](arg1);
 }
 
-export function SaveMapCapture(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['SaveMapCapture'](arg1, arg2, arg3, arg4);
+export function SaveMapCapture(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SaveMapCapture'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function Summaries(arg1) {
