@@ -5,6 +5,10 @@ import "maplibre-gl/dist/maplibre-gl.css"
 import "./lib/maplibreWorker"
 // Problems the page sees go to page.log from the start.
 import "./lib/pageLog"
+// TERRA's three faces, bundled; see the font block in index.css.
+import "@fontsource-variable/inter/opsz.css"
+import "@fontsource-variable/jetbrains-mono"
+import "@fontsource-variable/exo-2"
 import "./index.css"
 import App from "./App"
 
