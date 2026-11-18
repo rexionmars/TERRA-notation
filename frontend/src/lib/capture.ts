@@ -29,7 +29,7 @@ export function scaleBar(mpp: number, maxPx: number): { meters: number; px: numb
 
 export interface LegendItem {
   label: string
-  kind: "crosshair" | "record" | "saved" | "line" | "point" | "area"
+  kind: "crosshair" | "pasted" | "record" | "saved" | "line" | "point" | "area"
   color?: string
 }
 
@@ -84,6 +84,45 @@ export function drawCrosshair(
   ctx.stroke()
 }
 
+const BLUE = "#56B4E9"
+
+/**
+ * The mark of a pasted location: a diamond, so it differs from the record's
+ * crosshair by shape as well as by colour.
+ */
+export function drawPastedMark(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  s: number
+) {
+  const r = 11 * s
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(Math.PI / 4)
+  for (const [w, color] of [
+    [5 * s, "#000"],
+    [2.5 * s, BLUE],
+  ] as const) {
+    ctx.strokeStyle = color
+    ctx.lineWidth = w
+    ctx.strokeRect(
+      -r / Math.SQRT2,
+      -r / Math.SQRT2,
+      (2 * r) / Math.SQRT2,
+      (2 * r) / Math.SQRT2
+    )
+  }
+  ctx.restore()
+  ctx.beginPath()
+  ctx.arc(x, y, 2 * s, 0, Math.PI * 2)
+  ctx.fillStyle = BLUE
+  ctx.fill()
+  ctx.lineWidth = 1 * s
+  ctx.strokeStyle = "#000"
+  ctx.stroke()
+}
+
 function fit(ctx: CanvasRenderingContext2D, text: string, width: number): string {
   if (ctx.measureText(text).width <= width) return text
   let t = text
@@ -104,6 +143,11 @@ function drawLegendMark(
       ctx.translate(x + 9 * s, y)
       ctx.scale(0.4, 0.4)
       drawCrosshair(ctx, 0, 0, s)
+      break
+    case "pasted":
+      ctx.translate(x + 9 * s, y)
+      ctx.scale(0.5, 0.5)
+      drawPastedMark(ctx, 0, 0, s)
       break
     case "record":
     case "saved":
@@ -152,13 +196,15 @@ function drawLegendMark(
 
 /**
  * Compose the picture: the map canvas, the crosshair at the record, and the
- * caption strip. point is the record's position in CSS pixels of the map.
+ * caption strip. point is the record's position in CSS pixels of the map;
+ * pasted, when given, is a pasted location in view, drawn as a diamond.
  */
 export function composeCapture(
   map: HTMLCanvasElement,
   point: { x: number; y: number },
   caption: CaptureCaption,
-  capturedAt: Date
+  capturedAt: Date,
+  pasted: { x: number; y: number } | null = null
 ): string {
   const s = map.width / map.clientWidth
   const stripH = Math.round(100 * s)
@@ -169,6 +215,7 @@ export function composeCapture(
   if (!ctx) throw new Error("the browser gave no 2D canvas to compose the picture")
 
   ctx.drawImage(map, 0, 0)
+  if (pasted) drawPastedMark(ctx, pasted.x * s, pasted.y * s, s)
   drawCrosshair(ctx, point.x * s, point.y * s, s)
 
   // The strip is white with black text so the picture prints and reads in grey.

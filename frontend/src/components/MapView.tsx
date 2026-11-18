@@ -11,7 +11,7 @@ import type {
 import type { FeatureCollection } from "geojson"
 import { api, errorText } from "@/lib/api"
 import { BASEMAPS, LABELS_TILES, levelId } from "@/lib/basemaps"
-import { drawCrosshair } from "@/lib/capture"
+import { drawCrosshair, drawPastedMark } from "@/lib/capture"
 import { formatValue } from "@/lib/format"
 import type { ColumnValue, Row } from "@/lib/types"
 
@@ -24,6 +24,8 @@ export interface MapCapture {
   canvas: HTMLCanvasElement
   /** the record's position in CSS pixels of the canvas */
   point: { x: number; y: number }
+  /** the pasted location in CSS pixels, when it is in view */
+  pasted: { x: number; y: number } | null
   zoom: number
 }
 
@@ -33,7 +35,9 @@ export interface MapHandle {
 
 const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] }
 
-function crosshairElement(): HTMLCanvasElement {
+function markElement(
+  draw: (ctx: CanvasRenderingContext2D, x: number, y: number, s: number) => void
+): HTMLCanvasElement {
   const size = 64
   const dpr = window.devicePixelRatio || 1
   const c = document.createElement("canvas")
@@ -43,7 +47,7 @@ function crosshairElement(): HTMLCanvasElement {
   c.style.height = `${size}px`
   c.style.pointerEvents = "none"
   const ctx = c.getContext("2d")
-  if (ctx) drawCrosshair(ctx, (size / 2) * dpr, (size / 2) * dpr, dpr)
+  if (ctx) draw(ctx, (size / 2) * dpr, (size / 2) * dpr, dpr)
   return c
 }
 
@@ -82,6 +86,8 @@ export function MapView({
   zoom,
   onZoomChange,
   onContextMessage,
+  pasted,
+  pastedRequest,
 }: {
   ref?: Ref<MapHandle>
   rows: Row[]
@@ -94,10 +100,15 @@ export function MapView({
   zoom: number
   onZoomChange: (z: number) => void
   onContextMessage: (text: string) => void
+  /** a location the reader pasted, [lon, lat] */
+  pasted: [number, number] | null
+  /** changes each time the map should centre on the pasted location */
+  pastedRequest: number
 }) {
   const container = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MLMap | null>(null)
   const marker = useRef<maplibregl.Marker | null>(null)
+  const pastedMarker = useRef<maplibregl.Marker | null>(null)
   // Layer ids with a click handler; a handler outlives its layer, so one
   // removed and added again must not get a second.
   const clickBound = useRef(new Set<string>())
@@ -235,11 +246,31 @@ export function MapView({
     marker.current?.remove()
     marker.current = null
     if (!selected?.position) return
-    marker.current = new maplibregl.Marker({ element: crosshairElement() })
+    marker.current = new maplibregl.Marker({ element: markElement(drawCrosshair) })
       .setLngLat(selected.position)
       .addTo(map)
     map.jumpTo({ center: selected.position, zoom: live.current.zoom })
   }, [selected, ready])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready) return
+    pastedMarker.current?.remove()
+    pastedMarker.current = null
+    if (!pasted) return
+    pastedMarker.current = new maplibregl.Marker({
+      element: markElement(drawPastedMark),
+    })
+      .setLngLat(pasted)
+      .addTo(map)
+  }, [pasted, ready])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready || !pasted || pastedRequest === 0) return
+    map.jumpTo({ center: pasted, zoom: live.current.zoom })
+    // Only a new request moves the map; a changed record must not pull it back.
+  }, [pastedRequest, ready])
 
   // Context layers, read for the area in view each time the map stops moving.
   useEffect(() => {
@@ -372,14 +403,27 @@ export function MapView({
           throw new Error("the record has no position to capture")
         await idle(map)
         const p = map.project(selected.position)
+        const canvas = map.getCanvas()
+        let pastedAt: MapCapture["pasted"] = null
+        if (pasted) {
+          const q = map.project(pasted)
+          if (
+            q.x >= 0 &&
+            q.y >= 0 &&
+            q.x <= canvas.clientWidth &&
+            q.y <= canvas.clientHeight
+          )
+            pastedAt = { x: q.x, y: q.y }
+        }
         return {
-          canvas: map.getCanvas(),
+          canvas,
           point: { x: p.x, y: p.y },
+          pasted: pastedAt,
           zoom: map.getZoom(),
         }
       },
     }),
-    [selected]
+    [selected, pasted]
   )
 
   // Positioned inline: MapLibre's stylesheet gives the container

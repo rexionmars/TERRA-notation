@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   BrowserOpenURL,
+  ClipboardGetText,
   ClipboardSetText,
   OnFileDrop,
   OnFileDropOff,
@@ -8,7 +9,14 @@ import {
 import { api, errorText, imageURL } from "@/lib/api"
 import { BASEMAPS } from "@/lib/basemaps"
 import { composeCapture, type LegendItem } from "@/lib/capture"
-import { formatCount, formatPosition, formatValue, plainPosition } from "@/lib/format"
+import { distanceMeters, parseLocation, type Extent } from "@/lib/coordinates"
+import {
+  formatCount,
+  formatLength,
+  formatPosition,
+  formatValue,
+  plainPosition,
+} from "@/lib/format"
 import { googlePin, googleSatellite, googleStreetView } from "@/lib/links"
 import { readStored, usePersisted, writeStored } from "@/lib/persist"
 import { visibleRows, type ListOrder, type StatusFilter } from "@/lib/recordList"
@@ -27,6 +35,7 @@ import type {
 } from "@/lib/types"
 import { AnnotationForm, type FormState } from "@/components/AnnotationForm"
 import { CompareView } from "@/components/CompareView"
+import { LocationBox, type NearRecord } from "@/components/LocationBox"
 import { MapView, type ContextLayer, type MapHandle } from "@/components/MapView"
 import { RecordList } from "@/components/RecordList"
 import { SettingsDialog } from "@/components/SettingsDialog"
@@ -149,6 +158,13 @@ export function AnnotatePage({
   const [contextNames, setContextNames] = usePersisted<string[]>(key("context"), [])
   const [contextMessage, setContextMessage] = useState("")
 
+  // A location the reader pasted, [lon, lat], and the request to centre on it.
+  const [pasted, setPasted] = useState<[number, number] | null>(null)
+  const [pastedRequest, setPastedRequest] = useState(0)
+  const [locText, setLocText] = useState("")
+  const [locError, setLocError] = useState("")
+  const locInput = useRef<HTMLInputElement>(null)
+
   const [compare, setCompare] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [exported, setExported] = useState<ExportResult | null>(null)
@@ -206,12 +222,18 @@ export function AnnotatePage({
       .filter(shown)
       .map((c) => formatValue(valueOf(r, c)))
       .join(" · ")
+  const distanceTo = (r: Row) =>
+    pasted && r.position
+      ? distanceMeters(pasted[0], pasted[1], r.position[0], r.position[1])
+      : null
   const detailOf = (r: Row) => {
     const id = valueOf(r, ls.id_column)
     const parts = [id !== null ? String(id) : "", infoOf(r)].filter(Boolean)
     // The title is already "fid N" when the layer has no name column.
     if (parts.length === 0 && valueOf(r, ls.name_column) !== null)
       parts.push(`fid ${r.fid}`)
+    const d = distanceTo(r)
+    if (d !== null) parts.unshift(formatLength(d))
     return parts.join(" · ")
   }
 
@@ -221,13 +243,24 @@ export function AnnotatePage({
         ? visibleRows(
             table.rows,
             summaries,
-            { search, status, order, sqlIds },
+            { search, status, order, sqlIds, near: pasted },
             searchCols,
             settings.seed
           )
         : [],
-    [table, summaries, search, status, order, sqlIds, searchCols, settings.seed]
+    [table, summaries, search, status, order, sqlIds, pasted, searchCols, settings.seed]
   )
+  // The layer's extent, which tells a latitude-longitude pair from a reversed one.
+  const extent = useMemo<Extent | null>(() => {
+    const pos = (table?.rows ?? []).flatMap((r) => (r.position ? [r.position] : []))
+    if (pos.length === 0) return null
+    return {
+      minLon: Math.min(...pos.map((p) => p[0])),
+      minLat: Math.min(...pos.map((p) => p[1])),
+      maxLon: Math.max(...pos.map((p) => p[0])),
+      maxLat: Math.max(...pos.map((p) => p[1])),
+    }
+  }, [table])
   const rowByFid = useMemo(
     () => new Map(table?.rows.map((r) => [r.fid, r]) ?? []),
     [table]
@@ -387,6 +420,18 @@ export function AnnotatePage({
         { label: "this record", kind: "crosshair" },
         { label: "other records of the layer", kind: "record" },
       ]
+      if (cap.pasted && pasted) {
+        const d = distanceMeters(
+          pasted[0],
+          pasted[1],
+          selected.position[0],
+          selected.position[1]
+        )
+        legend.push({
+          label: `pasted location, ${formatLength(d)} from the record`,
+          kind: "pasted",
+        })
+      }
       if (categorized.size > 0)
         legend.push({ label: "records with a category", kind: "saved" })
       for (const c of contextLayers) {
@@ -408,7 +453,8 @@ export function AnnotatePage({
           zoom: cap.zoom,
           legend,
         },
-        new Date()
+        new Date(),
+        cap.pasted
       )
       return api.saveMapCapture(
         table.layer,
@@ -471,6 +517,64 @@ export function AnnotatePage({
       BrowserOpenURL(make(selected.position[0], selected.position[1]))
   }
 
+  // ---- pasted location -------------------------------------------------------
+
+  /** Reads a location and centres the map on it; false when it cannot be read. */
+  const goTo = (text: string): boolean => {
+    const r = parseLocation(text, extent)
+    if (!r.ok) {
+      setLocError(r.reason)
+      return false
+    }
+    setLocError("")
+    setPasted([r.lon, r.lat])
+    setPastedRequest((n) => n + 1)
+    setSourceTab("map")
+    if (r.swapped) flash("Read as longitude, latitude")
+    return true
+  }
+
+  const nearest: NearRecord[] = useMemo(() => {
+    if (!pasted || !table) return []
+    return table.rows
+      .flatMap((r) =>
+        r.position
+          ? [
+              {
+                fid: r.fid,
+                row: r,
+                meters: distanceMeters(
+                  pasted[0],
+                  pasted[1],
+                  r.position[0],
+                  r.position[1]
+                ),
+              },
+            ]
+          : []
+      )
+      .sort((a, b) => a.meters - b.meters)
+      .slice(0, 5)
+      .map((n) => ({ fid: n.fid, title: titleOf(n.row), meters: n.meters }))
+  }, [pasted, table, hidden, ls.name_column])
+
+  /*
+    ⌘V outside a text field: a location on the clipboard moves the map there;
+    anything else is taken as an image for the active slot.
+  */
+  const pasteOrGo = async () => {
+    const text = await ClipboardGetText().catch(() => "")
+    if (text && text.length < 2000) {
+      const r = parseLocation(text, extent)
+      if (r.ok) {
+        setLocText(text.trim())
+        goTo(text)
+        return
+      }
+    }
+    await paste(activeSide)
+  }
+
   // ---- keyboard --------------------------------------------------------------
 
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {})
@@ -496,7 +600,7 @@ export function AnnotatePage({
     if (isTyping(e.target)) return
     if (mod && k === "v") {
       e.preventDefault()
-      void paste(activeSide)
+      void pasteOrGo()
       return
     }
     if (mod || e.altKey) return
@@ -518,6 +622,11 @@ export function AnnotatePage({
       v: () => open(googleStreetView),
       f: () => setCompare(true),
       m: () => setSourceTab(sourceTab === "map" ? "image" : "map"),
+      l: () => {
+        setSourceTab("map")
+        locInput.current?.focus()
+        locInput.current?.select()
+      },
     }
     const act = actions[k]
     if (act) {
@@ -717,6 +826,9 @@ export function AnnotatePage({
               >
                 <option value="fid">Feature id</option>
                 <option value="random">Random ({settings.seed})</option>
+                <option value="distance" disabled={!pasted}>
+                  Distance to pasted location
+                </option>
               </select>
             </div>
             <details>
@@ -905,9 +1017,33 @@ export function AnnotatePage({
                   zoom={zoom}
                   onZoomChange={setZoom}
                   onContextMessage={setContextMessage}
+                  pasted={pasted}
+                  pastedRequest={pastedRequest}
+                />
+                <LocationBox
+                  inputRef={locInput}
+                  text={locText}
+                  onTextChange={(t) => {
+                    setLocText(t)
+                    setLocError("")
+                  }}
+                  onGo={goTo}
+                  error={locError}
+                  pasted={pasted}
+                  layer={table?.layer ?? ""}
+                  nearest={nearest}
+                  selected={fid}
+                  onPick={(n) => void selectFid(n)}
+                  onShow={() => setPastedRequest((n) => n + 1)}
+                  onClear={() => {
+                    setPasted(null)
+                    setLocText("")
+                    setLocError("")
+                    if (order === "distance") setOrder("fid")
+                  }}
                 />
                 {contextMessage && (
-                  <div className="absolute top-2 left-2 rounded bg-black/70 px-2 py-1 text-[11px]">
+                  <div className="absolute bottom-8 left-2 rounded bg-black/70 px-2 py-1 text-[11px]">
                     {contextMessage}
                   </div>
                 )}

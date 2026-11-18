@@ -67,6 +67,7 @@ describe("record list", () => {
     status: "all",
     order: "fid",
     sqlIds: null,
+    near: null,
     ...over,
   })
 
@@ -100,6 +101,26 @@ describe("record list", () => {
       48213
     ).map((r) => r.fid)
     expect(some).toEqual(all.filter((f) => [1, 4, 5].includes(f)))
+  })
+  it("orders by distance to a pasted point, and by id without one", () => {
+    const placed: Row[] = [
+      { fid: 1, position: [-63.0, -7.0], values: ["far"] },
+      { fid: 2, position: [-63.0, -7.5001], values: ["near"] },
+      { fid: 3, position: null, values: ["no position"] },
+      { fid: 4, position: [-63.01, -7.5], values: ["middle"] },
+    ]
+    expect(
+      visibleRows(
+        placed,
+        summaries,
+        q({ order: "distance", near: [-63.0, -7.5] }),
+        [0],
+        1
+      ).map((r) => r.fid)
+    ).toEqual([2, 4, 1, 3])
+    expect(
+      visibleRows(placed, summaries, q({ order: "distance" }), [0], 1).map((r) => r.fid)
+    ).toEqual([1, 2, 3, 4])
   })
   it("draws the same permutation from the same seed whatever the input order", () => {
     expect(seededOrder([5, 3, 1, 4, 2], 7)).toEqual(seededOrder([1, 2, 3, 4, 5], 7))
