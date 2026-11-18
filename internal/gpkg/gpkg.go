@@ -431,7 +431,27 @@ func (f *File) FeaturesIn(name string, bbox BBox, limit int) (*FeatureCollection
 		return nil, err
 	}
 	fc := &FeatureCollection{Type: "FeatureCollection", Features: []Feature{}}
-	var rows *sql.Rows
+	fc.Truncated, err = f.eachIn(l, bbox, limit, func(row Row, d Decoded) {
+		props := make(map[string]any, len(l.Columns))
+		for i, c := range l.Columns {
+			props[c.Name] = row.Values[i]
+		}
+		fc.Features = append(fc.Features, Feature{Type: "Feature", ID: row.FID, Geometry: d.Geometry, Properties: props})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return fc, nil
+}
+
+// eachIn calls each for the features of a layer whose bounding box meets
+// bbox, at most limit of them, and reports whether the limit cut the set
+// short. The spatial index is used when the layer has one.
+func (f *File) eachIn(l *layerInfo, bbox BBox, limit int, each func(Row, Decoded)) (bool, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
 	if l.rtree != "" {
 		minX, minY := l.unproject(bbox.MinX, bbox.MinY)
 		maxX, maxY := l.unproject(bbox.MaxX, bbox.MaxY)
@@ -443,29 +463,26 @@ func (f *File) FeaturesIn(name string, bbox BBox, limit int) (*FeatureCollection
 		rows, err = f.db.Query(fmt.Sprintf(`SELECT %s FROM %s`, f.selectList(l), quote(l.Name)))
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read layer %s: %w", name, err)
+		return false, fmt.Errorf("read layer %s: %w", l.Name, err)
 	}
 	defer func() { _ = rows.Close() }()
+	n := 0
 	for rows.Next() {
 		row, d, err := f.scanRow(l, rows)
 		if err != nil {
-			return nil, fmt.Errorf("read layer %s: %w", name, err)
+			return false, fmt.Errorf("read layer %s: %w", l.Name, err)
 		}
 		if d.BBox == nil || !d.BBox.intersects(bbox) {
 			continue
 		}
-		if len(fc.Features) == limit {
-			fc.Truncated = true
-			break
+		if n == limit {
+			return true, nil
 		}
-		props := make(map[string]any, len(l.Columns))
-		for i, c := range l.Columns {
-			props[c.Name] = row.Values[i]
-		}
-		fc.Features = append(fc.Features, Feature{Type: "Feature", ID: row.FID, Geometry: d.Geometry, Properties: props})
+		each(row, d)
+		n++
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read layer %s: %w", name, err)
+		return false, fmt.Errorf("read layer %s: %w", l.Name, err)
 	}
-	return fc, nil
+	return false, nil
 }
