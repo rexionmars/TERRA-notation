@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TERRA Notation</title>
+    <!-- The window's ground (--p-sunk in src/index.css), painted before the
+         bundle loads so the window does not flash a lighter grey. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: rgb(14 14 14);
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

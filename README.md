@@ -35,9 +35,10 @@ open -a "build/bin/TERRA Notation.app" --args /path/to/project-folder   # open a
 
 1. **New project**: choose the `.gpkg`, a folder for the project, a name and the
    annotator's name. Every point layer can be annotated; the other layers (roads, the
-   corridor, Indigenous lands, OpenStreetMap facilities) can be drawn on the map from the
-   Layers menu.
-2. Pick the layer at the top (`schools_cnefe`, `health_cnefe`). The list on the left can be
+   corridor, Indigenous lands, OpenStreetMap facilities) can be drawn on the map from its
+   layers button.
+2. Pick the layer in the bar at the top, where its name follows the project's
+   (`schools_cnefe`, `health_cnefe`). The list on the left can be
    searched (accents ignored), filtered by category, by "without a reference screenshot", or
    by an SQL condition on the layer's own columns (`matched = 0 AND distance_to_road_km > 5`),
    and ordered by feature id or in a random order drawn from the project's seed.
@@ -55,9 +56,10 @@ open -a "build/bin/TERRA Notation.app" --args /path/to/project-folder   # open a
      right-click copies "lat, lon" of the place under the pointer, ready to paste into
      Google Maps. The open record is the larger dot under the yellow crosshair, and a
      record with an answer has a white ring. A thin bar at the top of the map shows while
-     imagery or layers are loading. Other layers of the GeoPackage are added from the
-     Layers menu; OpenStreetMap layers are not drawn by default, since their points would
-     tell the annotator what a hidden `matched` column holds.
+     imagery or layers are loading. The column of buttons at the map's right edge zooms,
+     chooses the basemap, shows place names, and adds other layers of the GeoPackage;
+     OpenStreetMap layers are not drawn by default, since their points would tell the
+     annotator what a hidden `matched` column holds.
    - **Paste a location** into the field over the map, or press `⌘V` anywhere outside a
      text field (`L` focuses the field). It reads `-7.546178, -63.067186` as Google Maps
      copies it, decimal commas (`-7,546178; -63,067186`), degrees, minutes and seconds

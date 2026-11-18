@@ -1,7 +1,8 @@
 import { useEffect } from "react"
 import { imageURL } from "@/lib/api"
 import type { Image } from "@/lib/types"
-import { Button, Kbd } from "@/components/ui"
+import { BarButton, PathStep, TitleBar } from "@/components/TitleBar"
+import { Kbd } from "@/components/ui"
 
 /** Both screenshots side by side, as large as the window allows. */
 export function CompareView({
@@ -23,9 +24,11 @@ export function CompareView({
     return () => window.removeEventListener("keydown", onKey)
   }, [onClose])
   const pane = (img: Image | null, label: string) => (
-    <figure className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
-      <figcaption className="text-[12px] text-muted">{label}</figcaption>
-      <div className="relative min-h-0 flex-1 bg-black">
+    <figure className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-panel">
+      <figcaption className="flex h-10 shrink-0 items-center border-b border-border px-3 font-display text-read font-semibold tracking-wide">
+        {label}
+      </figcaption>
+      <div className="relative min-h-0 flex-1 bg-sunk">
         {img ? (
           <img
             src={imageURL(img)}
@@ -33,22 +36,28 @@ export function CompareView({
             className="absolute inset-0 h-full w-full object-contain"
           />
         ) : (
-          <p className="absolute inset-0 flex items-center justify-center text-muted">
-            no screenshot
+          <p className="absolute inset-0 flex items-center justify-center text-read text-muted-foreground">
+            No screenshot
           </p>
         )}
       </div>
     </figure>
   )
   return (
-    <div className="fixed inset-0 z-50 flex flex-col gap-2 bg-bg/97 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="truncate text-[14px] font-semibold">{title}</h2>
-        <Button tone="ghost" onClick={onClose}>
+    <div className="scrim-enter fixed inset-0 z-50 flex flex-col bg-app">
+      <TitleBar
+        path={[
+          <PathStep key="compare">Compare</PathStep>,
+          <PathStep key="record" current title={title}>
+            {title}
+          </PathStep>,
+        ]}
+      >
+        <BarButton onClick={onClose}>
           Close <Kbd>Esc</Kbd>
-        </Button>
-      </div>
-      <div className="flex min-h-0 flex-1 gap-3">
+        </BarButton>
+      </TitleBar>
+      <div className="flex min-h-0 flex-1 gap-2 p-2 pt-0">
         {pane(source, "Layer")}
         {pane(reference, "Reference map")}
       </div>

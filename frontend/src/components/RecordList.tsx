@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import type { Category, Row, Summary } from "@/lib/types"
 import { cn } from "@/components/ui"
 
-const ROW_HEIGHT = 50
+const ROW_HEIGHT = 44
 const OVERSCAN = 8
 
 export interface RecordText {
@@ -62,26 +62,33 @@ export function RecordList({
   return (
     <div
       ref={box}
-      className="relative min-h-0 flex-1 overflow-y-auto"
+      className="panel-scroll relative min-h-0 flex-1 overflow-y-auto"
       onScroll={(e) => setScroll(e.currentTarget.scrollTop)}
     >
       <div style={{ height: rows.length * ROW_HEIGHT }} className="relative">
         {rows.slice(first, last).map((r, k) => {
           const s = summaries.get(r.fid)
           const cat = s?.category ?? ""
+          const on = r.fid === selected
           return (
             <button
               type="button"
               key={r.fid}
+              aria-current={on ? "true" : undefined}
               onClick={() => onSelect(r.fid)}
               style={{ top: (first + k) * ROW_HEIGHT, height: ROW_HEIGHT }}
               className={cn(
-                "absolute inset-x-0 flex flex-col justify-center gap-0.5 border-b border-line/60 px-3 text-left",
-                r.fid === selected ? "bg-accent/15" : "hover:bg-hover"
+                "absolute inset-x-0 flex flex-col justify-center gap-0.5 border-b border-hairline px-3 text-left transition-colors",
+                // The current row: the selected overlay, and the accent along its edge.
+                on
+                  ? "bg-selected shadow-[inset_2px_0_0_var(--primary)]"
+                  : "hover:bg-hover"
               )}
             >
               <div className="flex w-full items-center gap-2">
-                <span className="min-w-0 flex-1 truncate">{text.title(r)}</span>
+                <span className="min-w-0 flex-1 truncate text-label text-foreground">
+                  {text.title(r)}
+                </span>
                 <span className="flex gap-0.5" aria-hidden>
                   <span
                     title={
@@ -90,8 +97,8 @@ export function RecordList({
                         : "no layer screenshot"
                     }
                     className={cn(
-                      "h-2 w-2 rounded-[2px] border border-muted/70",
-                      s?.has_source_image && "bg-muted"
+                      "size-2 rounded-xs border border-line-strong",
+                      s?.has_source_image && "bg-muted-foreground"
                     )}
                   />
                   <span
@@ -101,32 +108,31 @@ export function RecordList({
                         : "no reference screenshot"
                     }
                     className={cn(
-                      "h-2 w-2 rounded-[2px] border border-muted/70",
-                      s?.has_reference_image && "bg-muted"
+                      "size-2 rounded-xs border border-line-strong",
+                      s?.has_reference_image && "bg-muted-foreground"
                     )}
                   />
                 </span>
               </div>
-              <div className="flex w-full items-center gap-2 text-[11px] text-muted">
+              <div className="flex w-full items-center gap-2 text-meta text-muted-foreground">
                 <span className="min-w-0 flex-1 truncate">{text.detail(r)}</span>
                 {cat && (
-                  <span
-                    className="max-w-[45%] shrink-0 truncate rounded px-1.5 text-[10px] font-medium text-black"
-                    style={{ background: categoryColor(cat) }}
-                  >
-                    {labels.get(cat) ?? cat}
+                  <span className="flex max-w-[45%] shrink-0 items-center gap-1 text-foreground">
+                    <span
+                      className="size-2 shrink-0 rounded-xs"
+                      style={{ background: categoryColor(cat) }}
+                    />
+                    <span className="truncate">{labels.get(cat) ?? cat}</span>
                   </span>
                 )}
-                {!cat && s?.saved && (
-                  <span className="shrink-0 text-[10px]">notes only</span>
-                )}
+                {!cat && s?.saved && <span className="shrink-0">notes only</span>}
               </div>
             </button>
           )
         })}
       </div>
       {rows.length === 0 && (
-        <p className="absolute inset-x-0 top-6 text-center text-muted">
+        <p className="absolute inset-x-0 top-6 text-center text-read text-muted-foreground">
           No record matches.
         </p>
       )}

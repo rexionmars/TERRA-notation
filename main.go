@@ -32,7 +32,7 @@ func main() {
 		Height:           920,
 		MinWidth:         1100,
 		MinHeight:        700,
-		BackgroundColour: &options.RGBA{R: 17, G: 17, B: 19, A: 1},
+		BackgroundColour: &options.RGBA{R: 14, G: 14, B: 14, A: 1}, // the page's ground, --p-sunk
 		/*
 			TERRA_NOTATION_START_HIDDEN=1 keeps the window off the screen. Under
 			wails dev the page is also served at http://localhost:34115 with
@@ -63,6 +63,13 @@ func main() {
 		OnShutdown:  app.shutdown,
 		Bind:        []interface{}{app},
 		Mac: &mac.Options{
+			/*
+				Hidden, as TERRA's is, so the page draws the bar itself
+				(frontend/src/components/TitleBar.tsx). Hidden rather than
+				hidden-inset: without the toolbar the traffic lights are centred
+				16 pt down, on the centre line of that 32 pt bar.
+			*/
+			TitleBar:   mac.TitleBarHidden(),
 			Appearance: mac.NSAppearanceNameDarkAqua,
 			About: &mac.AboutInfo{
 				Title:   "TERRA Notation",

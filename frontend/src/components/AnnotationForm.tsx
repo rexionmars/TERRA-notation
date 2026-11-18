@@ -1,5 +1,6 @@
 import { formatTime } from "@/lib/format"
 import type { Category, HistoryEntry, Entry } from "@/lib/types"
+import { Check } from "@/components/icons"
 import { Button, cn, Field, inputClass, Kbd } from "@/components/ui"
 
 export interface FormState {
@@ -37,34 +38,51 @@ export function AnnotationForm({
   const a = record?.annotation
   const label = (id: string) => categories.find((c) => c.id === id)?.label ?? id
   return (
-    <div className="grid min-h-0 grid-cols-[minmax(240px,320px)_1fr] gap-4">
-      <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
-        <span className="text-[11px] font-medium tracking-wide text-muted uppercase">
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(240px,320px)_1fr] gap-4">
+      <div
+        role="radiogroup"
+        aria-label="What is at the point"
+        className="panel-scroll flex min-h-0 flex-col gap-0.5 overflow-y-auto"
+      >
+        <span className="mb-1 text-label text-muted-foreground">
           What is at the point
         </span>
         {categories.map((c, i) => {
           const on = form.category === c.id
           return (
+            /*
+              The chosen answer lights on the accent's plate, the surface
+              TERRA keeps for a chosen value. The colour of each category is
+              a swatch beside its name, never a ground for text.
+            */
             <button
               key={c.id}
               type="button"
+              role="radio"
+              aria-checked={on}
               title={c.description}
               onClick={() => onChange({ ...form, category: on ? "" : c.id })}
               className={cn(
-                "flex items-center gap-2 rounded border px-2 py-1.5 text-left",
-                on ? "border-text bg-raised" : "border-line hover:bg-hover"
+                "flex h-8 shrink-0 items-center gap-2 rounded-sm border px-2 text-left text-label transition-colors",
+                on
+                  ? "border-primary/55 bg-accent-dim text-foreground"
+                  : "border-transparent text-foreground/90 hover:bg-hover hover:text-foreground"
               )}
             >
               <span
-                className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-black/50 text-[10px] font-bold text-black"
+                className="flex size-3.5 shrink-0 items-center justify-center rounded-xs border border-black/50 text-black"
                 style={{ background: categoryColor(c.id) }}
               >
-                {on ? "✓" : ""}
+                {on && <Check className="size-3" />}
               </span>
-              <span className={cn("min-w-0 flex-1 truncate", on && "font-semibold")}>
+              <span className={cn("min-w-0 flex-1 truncate", on && "font-medium")}>
                 {c.label}
               </span>
-              {i < 9 && <Kbd>{i + 1}</Kbd>}
+              {i < 9 && (
+                <span className="text-muted-foreground">
+                  <Kbd>{i + 1}</Kbd>
+                </span>
+              )}
             </button>
           )
         })}
@@ -83,9 +101,7 @@ export function AnnotationForm({
           />
         </Field>
         <label className="flex min-h-0 flex-1 flex-col gap-1">
-          <span className="text-[11px] font-medium tracking-wide text-muted uppercase">
-            Notes
-          </span>
+          <span className="text-label text-muted-foreground">Notes</span>
           <textarea
             className={cn(inputClass, "h-auto min-h-[64px] flex-1 resize-none py-1.5")}
             value={form.notes}
@@ -94,7 +110,12 @@ export function AnnotationForm({
           />
         </label>
         <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-[11px] text-muted">
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-meta",
+              dirty ? "text-warning" : "text-muted-foreground"
+            )}
+          >
             {dirty
               ? "Unsaved changes"
               : a
@@ -117,14 +138,15 @@ export function AnnotationForm({
           </Button>
         </div>
         {history && (
-          <ol className="max-h-32 overflow-y-auto rounded border border-line bg-bg p-2 text-[11px]">
+          <ol className="panel-scroll max-h-32 overflow-y-auto rounded-sm border border-border bg-sunk p-2 text-meta select-text">
             {history.map((h) => (
               <li
                 key={h.revision}
-                className="border-b border-line/50 py-1 last:border-0"
+                className="border-b border-hairline py-1 last:border-0"
               >
-                <span className="text-muted">
-                  {h.revision}. {formatTime(h.saved_at)}
+                <span className="text-muted-foreground">
+                  {h.revision}.{" "}
+                  <span className="telemetry">{formatTime(h.saved_at)}</span>
                   {h.annotator ? `, ${h.annotator}` : ""}:
                 </span>{" "}
                 {h.category ? label(h.category) : "no category"}

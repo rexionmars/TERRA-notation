@@ -48,6 +48,8 @@ export interface MapHandle {
   capture: () => Promise<MapCapture>
   /** moves to a location with a short flight, so the reader sees where it went */
   flyTo: (lon: number, lat: number) => void
+  /** one level in or out, for the map's own buttons (MapTools) */
+  zoomBy: (levels: number) => void
 }
 
 /*
@@ -99,16 +101,19 @@ function idle(map: MLMap): Promise<void> {
 
 function popupContent(props: Record<string, unknown>, layer: string): HTMLElement {
   const el = document.createElement("div")
+  el.className = "select-text"
   const title = document.createElement("div")
-  title.style.fontWeight = "600"
-  title.style.marginBottom = "4px"
+  title.className = "mb-1 font-mono text-meta text-accent-quiet"
   title.textContent = layer
   el.appendChild(title)
   let n = 0
   for (const [k, v] of Object.entries(props)) {
     if (v === null || v === undefined || v === "" || n >= 10) continue
     const line = document.createElement("div")
-    line.textContent = `${k}: ${formatValue(v as ColumnValue)}`
+    const key = document.createElement("span")
+    key.className = "text-muted-foreground"
+    key.textContent = `${k} `
+    line.append(key, formatValue(v as ColumnValue))
     el.appendChild(line)
     n++
   }
@@ -265,10 +270,6 @@ export function MapView({
     })
     map.touchZoomRotate.disableRotation()
     map.keyboard.disableRotation()
-    map.addControl(
-      new maplibregl.NavigationControl({ showCompass: false }),
-      "top-right"
-    )
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right")
 
     let loadingTimer = 0
@@ -587,6 +588,10 @@ export function MapView({
   useImperativeHandle(
     ref,
     () => ({
+      zoomBy: (levels) => {
+        const map = mapRef.current
+        if (map) map.zoomTo(map.getZoom() + levels, { duration: 200 })
+      },
       flyTo: (lon, lat) => {
         const map = mapRef.current
         if (!map) return
@@ -632,13 +637,13 @@ export function MapView({
           position: relative outside any cascade layer, which beats a Tailwind class. */}
       <div ref={container} style={{ position: "absolute", inset: 0 }} />
       {loading && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden bg-accent/20">
-          <div className="map-loading h-full w-1/3 bg-accent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden bg-primary/20">
+          <div className="map-loading h-full w-1/3 bg-primary" />
         </div>
       )}
       {hover && (
         <div
-          className="pointer-events-none absolute z-20 max-w-[320px] truncate rounded bg-black/85 px-2 py-0.5 text-[11px] whitespace-nowrap text-white"
+          className="map-chrome pointer-events-none absolute z-20 max-w-[320px] truncate rounded-sm border border-[rgb(var(--p-line)/0.28)] px-2 py-0.5 text-label whitespace-nowrap text-foreground shadow-[0_2px_8px_rgb(0_0_0/0.28)]"
           style={
             hover.left
               ? { right: `calc(100% - ${hover.x - 12}px)`, top: hover.y + 12 }
@@ -646,7 +651,7 @@ export function MapView({
           }
         >
           <span
-            className="mr-1.5 inline-block h-2 w-2 rounded-full border border-black/60 align-middle"
+            className="mr-1.5 inline-block size-2 rounded-full border border-black/60 align-middle"
             style={{ background: hover.color }}
           />
           {hover.text}

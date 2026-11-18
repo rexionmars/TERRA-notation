@@ -57,6 +57,10 @@ format and is discussed before any code is written.
 
 - Code, comments, documentation, commit messages and the interface are in English
   (American spelling).
+- The interface follows TERRA's design system: its tokens, type scale, buttons and icons,
+  copied value for value (see "The interface's design" in the architecture notes). A
+  token is changed in TERRA first and copied here; a new control is built from the
+  primitives in `components/ui.tsx`.
 - A name says what a thing is. Packages and folders are named for their subject, never
   `util`, `helpers` or `common`.
 - A comment states the rule as it stands and why it holds: a constraint, a measured value,

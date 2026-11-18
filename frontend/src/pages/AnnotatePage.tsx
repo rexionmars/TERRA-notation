@@ -45,10 +45,24 @@ import {
   type MapLayer,
   type MapSelection,
 } from "@/components/MapView"
+import { CaretDown, CaretRight, Copy, Warning } from "@/components/icons"
+import { MapTools } from "@/components/MapTools"
 import { RecordList } from "@/components/RecordList"
 import { SettingsDialog } from "@/components/SettingsDialog"
 import { Slot } from "@/components/Slot"
-import { Button, cn, Dialog, ErrorLine, inputClass, Kbd } from "@/components/ui"
+import { BarButton, PathStep, TitleBar } from "@/components/TitleBar"
+import {
+  Button,
+  cn,
+  Dialog,
+  ErrorLine,
+  inputClass,
+  Kbd,
+  Panel,
+  PanelHeader,
+  Toast,
+  type ToastTone,
+} from "@/components/ui"
 
 // Okabe and Ito, in the order the default categories take them.
 const CATEGORY_COLORS = [
@@ -192,7 +206,7 @@ export function AnnotatePage({
     })
   const [loadError, setLoadError] = useState("")
   const [error, setError] = useState("")
-  const [notice, setNotice] = useState("")
+  const [notice, setNotice] = useState<{ text: string; tone: ToastTone } | null>(null)
   const [busy, setBusy] = useState(false)
 
   const [search, setSearch] = useState("")
@@ -235,9 +249,9 @@ export function AnnotatePage({
   const pendingRecord = useRef<{ layer: string; fid: number } | null>(null)
   const lastIndex = useRef(0)
 
-  const flash = (text: string, ms = 2200) => {
-    setNotice(text)
-    window.setTimeout(() => setNotice((n) => (n === text ? "" : n)), ms)
+  const flash = (text: string, tone: ToastTone = "success", ms = 2200) => {
+    setNotice({ text, tone })
+    window.setTimeout(() => setNotice((n) => (n?.text === text ? null : n)), ms)
   }
 
   // ---- the layer -------------------------------------------------------------
@@ -687,7 +701,7 @@ export function AnnotatePage({
     }
     const n = near[0]
     if (n && n.meters <= EXACT_MATCH_METERS) {
-      flash(`${prefix}${n.title} · ${n.layer}`)
+      flash(`${prefix}${n.title} · ${n.layer}`, "info")
       if (n.layer === table?.layer && n.fid === fid) mapRef.current?.flyTo(lon, lat)
       else await openRecord(n.layer, n.fid)
       return
@@ -700,7 +714,7 @@ export function AnnotatePage({
       parts.push(
         `${formatLength(distanceMeters(lon, lat, selected.position[0], selected.position[1]))} from the selected record.`
       )
-    flash(parts.join(" "), 6000)
+    flash(parts.join(" "), "info", 6000)
   }
 
   /** Reads a location and goes there; false when it cannot be read. */
@@ -844,145 +858,170 @@ export function AnnotatePage({
         ? "The GeoPackage is not at its recorded path."
         : "")
 
+  const layersPanel = (
+    <div className="flex flex-col py-1.5">
+      <p className="px-3 pb-1.5 text-meta text-muted-foreground">
+        Layers of the GeoPackage drawn on the map. Pressing a point of a layer marked
+        “records” opens that record.
+      </p>
+      {project.layers.map((l, i) => {
+        const isOpen = l.name === layer?.name
+        const kind = geometryKind(l)
+        const color = layerColor(i)
+        return (
+          <label
+            key={l.name}
+            className={cn(
+              "flex h-7 shrink-0 items-center gap-2 px-3 text-label hover:bg-[rgb(var(--p-surface-raised)/0.6)]",
+              l.problem && "opacity-50"
+            )}
+            title={l.problem || l.description}
+          >
+            <input
+              type="checkbox"
+              className="accent-primary"
+              disabled={!!l.problem || isOpen}
+              checked={isOpen || drawnNames.includes(l.name)}
+              onChange={(e) =>
+                setShownNames(
+                  e.target.checked
+                    ? [...drawnNames, l.name]
+                    : drawnNames.filter((n) => n !== l.name)
+                )
+              }
+            />
+            <span
+              className={cn(
+                "shrink-0 border border-black/60",
+                kind === "point"
+                  ? "size-2.5 rounded-full"
+                  : kind === "line"
+                    ? "h-1 w-3"
+                    : "h-2.5 w-3"
+              )}
+              style={{ background: color }}
+            />
+            <span className="min-w-0 flex-1 truncate font-mono text-foreground">
+              {l.name}
+            </span>
+            <span className="shrink-0 text-meta text-muted-foreground">
+              {isOpen ? (
+                "open"
+              ) : registerLayers.includes(l.name) ? (
+                "records"
+              ) : (
+                <>
+                  <span className="telemetry">{formatCount(l.feature_count)}</span>{" "}
+                  {kind === "point" ? "points" : kind === "line" ? "lines" : "areas"}
+                </>
+              )}
+            </span>
+          </label>
+        )
+      })}
+    </div>
+  )
+
   return (
-    <div className="flex h-full flex-col">
-      {/* top bar */}
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-panel px-3">
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate font-semibold">{info.name}</span>
-          <span className="truncate text-[11px] text-muted" title={info.source.path}>
-            {info.source.path.split("/").pop()}
-          </span>
-        </div>
-        <select
-          className={inputClass}
-          value={layer?.name ?? ""}
-          onChange={(e) => void changeLayer(e.target.value)}
-        >
-          {pointLayers.map((l) => (
-            <option key={l.name} value={l.name}>
-              {l.name} ({formatCount(l.feature_count)})
-            </option>
-          ))}
-        </select>
+    <div className="flex h-full flex-col bg-app">
+      <TitleBar
+        path={[
+          <PathStep key="project" title={info.source.path}>
+            {info.name}
+          </PathStep>,
+          /*
+            The layer is the place in the path, and choosing another is done on
+            the step itself, as TERRA's steps open their own menus.
+          */
+          /*
+            The name is drawn by the step and the system's own menu is opened
+            by a select laid over it, unseen: a select sizes itself to its
+            longest option, so drawn as itself it would leave a gap after a
+            short name.
+          */
+          <label
+            key="layer"
+            title="Layer to annotate"
+            className="app-no-drag relative flex h-6 min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-heading text-foreground focus-within:ring-1 focus-within:ring-ring hover:bg-hover"
+          >
+            <span className="min-w-0 truncate">{layer?.name ?? "no point layer"}</span>
+            {layer && (
+              <span className="telemetry shrink-0 text-label text-muted-foreground">
+                {formatCount(layer.feature_count)}
+              </span>
+            )}
+            <CaretDown className="size-3 shrink-0 text-muted-foreground" />
+            <select
+              aria-label="Layer to annotate"
+              className="absolute inset-0 cursor-default opacity-0"
+              value={layer?.name ?? ""}
+              onChange={(e) => void changeLayer(e.target.value)}
+            >
+              {pointLayers.map((l) => (
+                <option key={l.name} value={l.name}>
+                  {l.name} ({formatCount(l.feature_count)})
+                </option>
+              ))}
+            </select>
+          </label>,
+        ]}
+      >
         {table && (
-          <span className="text-[12px] text-muted">
-            {formatCount(categorized.size)} of {formatCount(total)} with a category
+          <span className="mr-3 shrink-0 text-label text-muted-foreground">
+            <span className="telemetry text-foreground">
+              {formatCount(categorized.size)}
+            </span>{" "}
+            of <span className="telemetry">{formatCount(total)}</span> with a category
           </span>
         )}
-        <div className="flex-1" />
-        <select
-          className={inputClass}
-          value={basemap}
-          onChange={(e) => setBasemap(e.target.value)}
-          title="Basemap of the map on the left"
-        >
-          {BASEMAPS.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.label}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-1 text-[12px]">
-          <input
-            type="checkbox"
-            checked={labels}
-            onChange={(e) => setLabels(e.target.checked)}
-          />
-          Place names
-        </label>
-        <details className="relative">
-          <summary className="flex h-7 cursor-default list-none items-center rounded border border-line bg-raised px-2.5 text-[12px] hover:bg-hover">
-            Layers ({mapLayers.length})
-          </summary>
-          <div className="absolute right-0 z-40 mt-1 max-h-[70vh] w-[340px] overflow-y-auto rounded border border-line bg-panel p-2 shadow-xl">
-            <p className="mb-1.5 text-[11px] text-muted">
-              Layers of the GeoPackage drawn on the map. Pressing a point of a layer
-              marked “records” opens that record.
-            </p>
-            {project.layers.map((l, i) => {
-              const isOpen = l.name === layer?.name
-              const kind = geometryKind(l)
-              const color = layerColor(i)
-              return (
-                <label
-                  key={l.name}
-                  className={cn(
-                    "flex items-center gap-2 rounded px-1 py-0.5 text-[12px] hover:bg-hover",
-                    l.problem && "opacity-50"
-                  )}
-                  title={l.problem || l.description}
-                >
-                  <input
-                    type="checkbox"
-                    disabled={!!l.problem || isOpen}
-                    checked={isOpen || drawnNames.includes(l.name)}
-                    onChange={(e) =>
-                      setShownNames(
-                        e.target.checked
-                          ? [...drawnNames, l.name]
-                          : drawnNames.filter((n) => n !== l.name)
-                      )
-                    }
-                  />
-                  <span
-                    className={cn(
-                      "shrink-0 border border-black/60",
-                      kind === "point"
-                        ? "h-2.5 w-2.5 rounded-full"
-                        : kind === "line"
-                          ? "h-1 w-3"
-                          : "h-2.5 w-3"
-                    )}
-                    style={{ background: color }}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{l.name}</span>
-                  <span className="shrink-0 text-[11px] text-muted">
-                    {isOpen
-                      ? "open"
-                      : registerLayers.includes(l.name)
-                        ? "records"
-                        : `${formatCount(l.feature_count)} ${kind === "point" ? "points" : kind === "line" ? "lines" : "areas"}`}
-                  </span>
-                </label>
-              )
-            })}
-          </div>
-        </details>
-        <Button onClick={() => setSettingsOpen(true)}>Settings</Button>
-        <Button disabled={busy} onClick={() => void runExport()}>
+        <BarButton onClick={() => setSettingsOpen(true)}>Settings</BarButton>
+        <BarButton disabled={busy} onClick={() => void runExport()}>
           Export
-        </Button>
-        <Button tone="ghost" onClick={() => void save().then((ok) => ok && onClose())}>
+        </BarButton>
+        <BarButton onClick={() => void save().then((ok) => ok && onClose())}>
           Close project
-        </Button>
-      </header>
+        </BarButton>
+      </TitleBar>
 
       {sourceWarning && (
-        <div className="flex items-center gap-3 border-b border-danger/40 bg-danger/10 px-3 py-2 text-[12px] text-danger">
+        <div className="mx-2 mb-2 flex items-center gap-3 rounded-md border border-destructive-quiet/35 bg-destructive/15 px-3 py-2 text-label text-destructive-quiet">
+          <Warning className="size-4 shrink-0" />
           <span className="flex-1 select-text">{sourceWarning}</span>
           {info.source_status === "changed" && (
-            <Button onClick={() => setRelinkPath(info.source.path)}>
+            <Button size="dense" onClick={() => setRelinkPath(info.source.path)}>
               Accept this file
             </Button>
           )}
-          <Button onClick={() => void locateSource()}>Locate GeoPackage…</Button>
+          <Button size="dense" onClick={() => void locateSource()}>
+            Locate GeoPackage…
+          </Button>
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 gap-2 px-2 pb-2">
         {/* record list */}
-        <aside className="flex w-[300px] shrink-0 flex-col border-r border-line bg-panel">
-          <div className="flex flex-col gap-2 border-b border-line p-2">
+        <Panel className="w-[300px] shrink-0">
+          <PanelHeader
+            title="Records"
+            detail={
+              <>
+                <span className="telemetry">{formatCount(visible.length)}</span> of{" "}
+                <span className="telemetry">{formatCount(total)}</span> shown
+              </>
+            }
+          />
+          <div className="flex flex-col gap-2 border-b border-border p-2">
             <input
               className={inputClass}
               placeholder="Search names and attributes"
+              aria-label="Search names and attributes"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
             <div className="flex gap-2">
               <select
                 className={cn(inputClass, "min-w-0 flex-1")}
+                aria-label="Records to show"
                 value={status}
                 onChange={(e) => setStatus(e.target.value as StatusFilter)}
               >
@@ -1000,6 +1039,7 @@ export function AnnotatePage({
               </select>
               <select
                 className={cn(inputClass, "w-[118px]")}
+                aria-label="Order"
                 value={order}
                 onChange={(e) => setOrder(e.target.value as ListOrder)}
                 title={
@@ -1012,22 +1052,31 @@ export function AnnotatePage({
                 <option value="random">Random ({settings.seed})</option>
               </select>
             </div>
-            <details>
-              <summary className="cursor-default text-[11px] text-muted">
-                SQL condition{sqlIds ? ` (applied, ${formatCount(sqlIds.size)})` : ""}
+            <details className="group">
+              <summary className="flex cursor-default list-none items-center gap-1.5 text-label text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                <CaretRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+                SQL condition
+                {sqlIds && (
+                  <span className="text-accent-quiet">
+                    applied,{" "}
+                    <span className="telemetry">{formatCount(sqlIds.size)}</span>
+                  </span>
+                )}
               </summary>
-              <div className="mt-1 flex flex-col gap-1">
+              <div className="mt-1.5 flex flex-col gap-1.5">
                 <textarea
                   className={cn(
                     inputClass,
-                    "h-14 resize-none py-1 font-mono text-[11px]"
+                    "h-14 resize-none py-1 font-mono text-meta"
                   )}
+                  aria-label="SQL condition"
                   placeholder="matched = 0 AND distance_to_road_km > 5"
                   value={sqlText}
                   onChange={(e) => setSqlText(e.target.value)}
                 />
                 <div className="flex gap-1">
                   <Button
+                    size="dense"
                     disabled={!sqlText.trim() || !layer}
                     onClick={() => {
                       if (!layer) return
@@ -1042,6 +1091,7 @@ export function AnnotatePage({
                   </Button>
                   <Button
                     tone="ghost"
+                    size="dense"
                     disabled={!sqlIds}
                     onClick={() => {
                       setSqlIds(null)
@@ -1052,20 +1102,19 @@ export function AnnotatePage({
                   </Button>
                 </div>
                 {sqlError && (
-                  <p className="text-[11px] text-danger select-text">{sqlError}</p>
+                  <p className="text-meta text-destructive-quiet select-text">
+                    {sqlError}
+                  </p>
                 )}
               </div>
             </details>
-            <span className="text-[11px] text-muted">
-              {formatCount(visible.length)} of {formatCount(total)} records shown
-            </span>
           </div>
           {loadError ? (
             <div className="p-3">
               <ErrorLine text={loadError} />
             </div>
           ) : !table ? (
-            <p className="p-3 text-muted">Reading the layer…</p>
+            <p className="p-3 text-read text-muted-foreground">Reading the layer…</p>
           ) : (
             <RecordList
               rows={visible}
@@ -1077,35 +1126,48 @@ export function AnnotatePage({
               text={{ title: titleOf, detail: detailOf }}
             />
           )}
-        </aside>
+        </Panel>
 
         {/* the record */}
-        <main className="flex min-w-0 flex-1 flex-col gap-2 p-2">
-          <div className="flex shrink-0 items-start gap-3 px-1">
+        <main className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="flex shrink-0 items-center gap-3 px-1">
             <div className="min-w-0 flex-1">
-              <h1 className="truncate text-[16px] font-semibold select-text">
+              <h1 className="truncate font-display text-display font-semibold tracking-wide select-text">
                 {selected ? titleOf(selected) : "No record selected"}
               </h1>
               {selected && (
-                <p className="truncate text-[12px] text-muted select-text">
+                <p className="truncate text-label text-muted-foreground select-text">
                   {detailOf(selected)}
-                  {selected.position
-                    ? ` · ${formatPosition(selected.position[0], selected.position[1])}`
-                    : " · no position"}
+                  {selected.position ? (
+                    <>
+                      {" · "}
+                      <span className="telemetry">
+                        {formatPosition(selected.position[0], selected.position[1])}
+                      </span>
+                    </>
+                  ) : (
+                    " · no position"
+                  )}
                 </p>
               )}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <Button
+                size="dense"
                 disabled={!selected?.position}
                 onClick={() => open(googleSatellite)}
               >
                 Google Maps <Kbd>G</Kbd>
               </Button>
-              <Button disabled={!selected?.position} onClick={() => open(googlePin)}>
+              <Button
+                size="dense"
+                disabled={!selected?.position}
+                onClick={() => open(googlePin)}
+              >
                 Pin <Kbd>P</Kbd>
               </Button>
               <Button
+                size="dense"
                 disabled={!selected?.position}
                 onClick={() => open(googleStreetView)}
               >
@@ -1113,6 +1175,7 @@ export function AnnotatePage({
               </Button>
               <Button
                 tone="ghost"
+                size="dense"
                 disabled={!selected?.position}
                 onClick={() => {
                   if (!selected?.position) return
@@ -1122,13 +1185,14 @@ export function AnnotatePage({
                   flash("Coordinates copied")
                 }}
               >
+                <Copy className="size-3.5" />
                 Copy lat, lon
               </Button>
-              <div className="mx-1 h-5 w-px bg-line" />
-              <Button tone="ghost" onClick={() => void go(-1)}>
+              <div className="mx-1 h-5 w-px bg-line/40" />
+              <Button tone="ghost" size="dense" onClick={() => void go(-1)}>
                 Previous <Kbd>⌥↑</Kbd>
               </Button>
-              <Button tone="ghost" onClick={() => void go(1)}>
+              <Button tone="ghost" size="dense" onClick={() => void go(1)}>
                 Next <Kbd>⌥↓</Kbd>
               </Button>
             </div>
@@ -1139,28 +1203,35 @@ export function AnnotatePage({
               side="source"
               active={activeSide === "source"}
               onActivate={() => setActiveSide("source")}
-              title={
-                <>
-                  Layer <span className="font-normal text-muted">{table?.layer}</span>
-                </>
-              }
+              title="Layer"
+              detail={<span className="font-mono">{table?.layer}</span>}
               tabs={
-                <div className="flex rounded border border-line text-[11px]">
-                  {(["map", "image"] as const).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      disabled={t === "image" && !record?.source_image}
-                      onClick={() => setSourceTab(t)}
-                      className={cn(
-                        "px-2 py-0.5 disabled:opacity-40",
-                        sourceTab === t ? "bg-raised text-text" : "text-muted"
-                      )}
-                    >
-                      {t === "map" ? "Live map" : "Screenshot"}
-                    </button>
-                  ))}
-                  <span className="px-1 py-0.5">
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <div
+                    role="radiogroup"
+                    aria-label="What the layer half shows"
+                    className="inline-flex rounded-full bg-app p-0.5"
+                  >
+                    {(["map", "image"] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        role="radio"
+                        aria-checked={sourceTab === t}
+                        disabled={t === "image" && !record?.source_image}
+                        onClick={() => setSourceTab(t)}
+                        className={cn(
+                          "rounded-full px-2.5 py-0.5 text-meta transition-colors disabled:opacity-40",
+                          sourceTab === t
+                            ? "bg-surface-raised text-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {t === "map" ? "Live map" : "Screenshot"}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-muted-foreground">
                     <Kbd>M</Kbd>
                   </span>
                 </div>
@@ -1175,6 +1246,7 @@ export function AnnotatePage({
               extraActions={
                 <Button
                   tone="primary"
+                  size="dense"
                   disabled={busy || !selected?.position}
                   onClick={() => void captureMap()}
                   title="Keep a picture of the map on the left, with the record, coordinates and scale"
@@ -1214,10 +1286,20 @@ export function AnnotatePage({
                   pasted={pasted !== null}
                 />
                 {contextMessage && (
-                  <div className="absolute top-12 left-2 z-10 rounded bg-black/80 px-2 py-1 text-[11px]">
+                  <div className="map-chrome absolute top-12 left-2 z-10 rounded-sm border border-[rgb(var(--p-line)/0.28)] px-2 py-1 text-label text-foreground">
                     {contextMessage}
                   </div>
                 )}
+                <MapTools
+                  onZoomIn={() => mapRef.current?.zoomBy(1)}
+                  onZoomOut={() => mapRef.current?.zoomBy(-1)}
+                  basemap={basemap}
+                  onBasemap={setBasemap}
+                  labels={labels}
+                  onLabels={setLabels}
+                  layerCount={mapLayers.length}
+                  layers={layersPanel}
+                />
               </div>
               {sourceTab === "image" && record?.source_image && (
                 <button
@@ -1239,14 +1321,8 @@ export function AnnotatePage({
               side="reference"
               active={activeSide === "reference"}
               onActivate={() => setActiveSide("reference")}
-              title={
-                <>
-                  Reference{" "}
-                  <span className="font-normal text-muted">
-                    Google Maps or Street View
-                  </span>
-                </>
-              }
+              title="Reference"
+              detail="Google Maps or Street View"
               image={record?.reference_image ?? null}
               busy={busy}
               onRegion={() => void region("reference")}
@@ -1258,70 +1334,81 @@ export function AnnotatePage({
           </div>
 
           <div className="grid min-h-[230px] flex-[2] grid-cols-[1fr_300px] gap-2">
-            <div className="flex min-h-0 flex-col rounded-md border border-line bg-panel p-3">
-              <AnnotationForm
-                categories={settings.categories}
-                categoryColor={categoryColor}
-                form={form}
-                onChange={(f) => {
-                  setForm(f)
-                  setDirty(true)
-                }}
-                record={record}
-                dirty={dirty}
-                busy={busy || !selected}
-                onSave={() => void save()}
-                onSaveAndNext={() => void go(1)}
-                history={history}
-                onToggleHistory={() => void toggleHistory()}
-              />
-            </div>
-            <div className="flex min-h-0 flex-col rounded-md border border-line bg-panel">
-              <div className="border-b border-line px-3 py-2 text-[11px] font-medium tracking-wide text-muted uppercase">
-                Attributes
-                {hidden.size > 0 && (
-                  <span className="ml-1 tracking-normal normal-case">
-                    ({hidden.size} hidden while annotating)
-                  </span>
-                )}
+            <Panel>
+              <PanelHeader title="Answer" />
+              <div className="flex min-h-0 flex-1 flex-col p-3">
+                <AnnotationForm
+                  categories={settings.categories}
+                  categoryColor={categoryColor}
+                  form={form}
+                  onChange={(f) => {
+                    setForm(f)
+                    setDirty(true)
+                  }}
+                  record={record}
+                  dirty={dirty}
+                  busy={busy || !selected}
+                  onSave={() => void save()}
+                  onSaveAndNext={() => void go(1)}
+                  history={history}
+                  onToggleHistory={() => void toggleHistory()}
+                />
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-3 py-1">
+            </Panel>
+            <Panel>
+              <PanelHeader
+                title="Attributes"
+                detail={
+                  hidden.size > 0 ? `${hidden.size} hidden while annotating` : undefined
+                }
+              />
+              <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-3 py-1 select-text">
                 {selected && (
-                  <table className="w-full text-[12px]">
+                  <table className="w-full text-label">
                     <tbody>
-                      {columns.map((c, i) =>
-                        hidden.has(c.name) ? null : (
+                      {columns.map((c, i) => {
+                        if (hidden.has(c.name)) return null
+                        const v = selected.values[i]
+                        return (
                           <tr
                             key={c.name}
-                            className="border-b border-line/40 align-top"
+                            className="border-t border-hairline align-top first:border-t-0"
                           >
-                            <td className="py-0.5 pr-2 text-muted">{c.name}</td>
-                            <td className="py-0.5 [overflow-wrap:anywhere] select-text">
-                              {formatValue(selected.values[i])}
+                            <td className="py-1 pr-2 font-mono text-meta text-muted-foreground">
+                              {c.name}
+                            </td>
+                            <td
+                              className={cn(
+                                "py-1 [overflow-wrap:anywhere]",
+                                typeof v === "number" && "telemetry"
+                              )}
+                            >
+                              {formatValue(v)}
                             </td>
                           </tr>
                         )
-                      )}
+                      })}
                     </tbody>
                   </table>
                 )}
               </div>
-            </div>
+            </Panel>
           </div>
         </main>
       </div>
 
       {(error || notice) && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center">
-          <div className="pointer-events-auto w-[640px] max-w-[90vw]">
-            {error ? (
-              <ErrorLine text={error} onDismiss={() => setError("")} />
-            ) : (
-              <div className="mx-auto w-fit rounded bg-raised px-3 py-1.5 text-[12px] shadow-lg">
-                {notice}
-              </div>
-            )}
-          </div>
+        <div className="pointer-events-none fixed right-4 bottom-4 z-40 flex flex-col items-end gap-2.5">
+          {notice && (
+            <div className="pointer-events-auto">
+              <Toast tone={notice.tone} text={notice.text} />
+            </div>
+          )}
+          {error && (
+            <div className="pointer-events-auto">
+              <Toast tone="error" text={error} onDismiss={() => setError("")} />
+            </div>
+          )}
         </div>
       )}
 
@@ -1346,31 +1433,36 @@ export function AnnotatePage({
 
       {exported && (
         <Dialog
+          eyebrow="Export"
           title="Export written"
           onClose={() => setExported(null)}
           footer={
             <>
-              <Button onClick={() => void api.reveal(exported.dir)}>
+              <Button size="commit" onClick={() => void api.reveal(exported.dir)}>
                 Show in Finder
               </Button>
-              <Button tone="primary" onClick={() => setExported(null)}>
+              <Button tone="primary" size="commit" onClick={() => setExported(null)}>
                 Done
               </Button>
             </>
           }
         >
-          <p className="mb-3 break-all text-muted select-text">{exported.dir}</p>
-          <ul className="mb-3 flex flex-col gap-1">
+          <p className="telemetry mb-3 text-meta break-all text-muted-foreground">
+            {exported.dir}
+          </p>
+          <ul className="mb-3 flex flex-col gap-1 text-read">
             {exported.layers.map((l) => (
               <li key={l.layer}>
-                <span className="font-medium">{l.layer}</span>: {formatCount(l.records)}{" "}
-                records, {formatCount(l.revisions)} saved revisions
+                <span className="font-mono font-medium">{l.layer}</span>:{" "}
+                <span className="telemetry">{formatCount(l.records)}</span> records,{" "}
+                <span className="telemetry">{formatCount(l.revisions)}</span> saved
+                revisions
                 {l.without_position > 0 &&
                   `, ${l.without_position} without a position left out of the GeoPackage`}
               </li>
             ))}
           </ul>
-          <ul className="text-[12px] text-muted">
+          <ul className="telemetry text-meta text-muted-foreground">
             {exported.files.map((f) => (
               <li key={f}>{f.split("/").pop()}</li>
             ))}
@@ -1380,22 +1472,30 @@ export function AnnotatePage({
 
       {relinkPath && (
         <Dialog
-          title="Use a GeoPackage with a different SHA-256?"
+          eyebrow="GeoPackage"
+          title="Use a file with a different SHA-256?"
+          tone="destructive"
           onClose={() => setRelinkPath(null)}
           footer={
             <>
-              <Button onClick={() => setRelinkPath(null)}>Cancel</Button>
-              <Button tone="danger" onClick={() => void relink(relinkPath, true)}>
+              <Button size="commit" onClick={() => setRelinkPath(null)}>
+                Cancel
+              </Button>
+              <Button
+                tone="danger"
+                size="commit"
+                onClick={() => void relink(relinkPath, true)}
+              >
                 Use this file
               </Button>
             </>
           }
         >
-          <p className="mb-2">
-            <span className="break-all select-text">{relinkPath}</span> is not the file
+          <p className="mb-2 text-read">
+            <span className="telemetry break-all">{relinkPath}</span> is not the file
             this project was made on.
           </p>
-          <p className="text-muted">
+          <p className="text-read text-muted-foreground">
             Answers are tied to feature ids. If the file was regenerated, an id may now
             name another record. The new hash is recorded and the old one kept in the
             project.

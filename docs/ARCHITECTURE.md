@@ -186,6 +186,38 @@ tested with Vitest.
   outside a text field reads the clipboard text first: coordinates move the map, and
   anything else is taken as an image for the active slot.
 
+## The interface's design
+
+The interface takes TERRA's design system, so the two applications read as one family.
+The dark theme's ramp, roles, type scale and radii (`src/index.css`), its button heights and
+dialog (`components/ui.tsx`), its icons (`components/icons.tsx`: KDE's Breeze glyphs,
+LGPL-3.0-or-later, and TERRA's line icons) and its three faces (Exo 2 for headings, Inter,
+JetBrains Mono for figures) are copied from TERRA's `frontend/src/index.css` and
+`docs/DESIGN.md`. A change to a token is made in TERRA first and copied here. The fonts are
+bundled from `@fontsource-variable`, so basemap tiles stay the only network traffic.
+
+- **Window.** The title bar is hidden on macOS (`main.go`), as TERRA's is. The page draws a
+  32 pt bar (`components/TitleBar.tsx`) whose centre line is where macOS puts the traffic
+  lights, 16 pt down; it holds TERRA's mark (`public/terra-logo.png`), the path (the project, then the layer, chosen on
+  the step itself) and the project's actions. Panels sit on the window's ground with 8 px
+  between them.
+- **Over the map.** The location field, the legend, the column of map buttons with its
+  panels (`components/MapTools.tsx`), and MapLibre's credit and scale are TERRA's map
+  material, `.map-chrome`: ink at 0.82 behind a blur, the ground dimmed to 0.7 first, which
+  TERRA measured to hold secondary text at 4.71:1 over bright imagery.
+- **Colour.** The accent (#FC6F20) marks controls and the active state, and is never small
+  text: the quiet tone (#FF7428) is. The colours of layers and categories stay Okabe and
+  Ito's, since they answer to the data; a category is a swatch beside its name, never a
+  ground for text.
+- **Cascade.** `.field-input`, `.eyebrow`, `.telemetry` and `.map-chrome` are in Tailwind's
+  components layer, so a utility at the call site overrides them. In TERRA they are
+  unlayered and beat every utility.
+- **Icons.** The markup object of each icon is made once. React 19 compares
+  `dangerouslySetInnerHTML` by identity, and a new object on each render rewrites the svg's
+  children; a render between a press and its release then removed the path the press began
+  on, and the button never received the click.
+- **Not taken.** TERRA's light theme, its pointer set and its splash.
+
 ## Screenshots of other windows
 
 On macOS, `CaptureScreenRegion` hides the window, waits 250 ms for it to leave the screen,
