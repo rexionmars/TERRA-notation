@@ -11,7 +11,9 @@ package exports
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -86,10 +88,9 @@ func Write(p *annotation.Project, src *gpkg.File, parent string) (*Result, error
 	if len(layers) == 0 {
 		return nil, fmt.Errorf("the project has no annotations or screenshots to export yet")
 	}
-	stamp := time.Now().Format("2006-01-02_150405")
-	dir := filepath.Join(parent, stamp)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("create export folder: %w", err)
+	dir, err := newExportDir(parent, "")
+	if err != nil {
+		return nil, err
 	}
 	res := &Result{Dir: dir}
 	var all []layerData
@@ -145,6 +146,34 @@ func Write(p *annotation.Project, src *gpkg.File, parent string) (*Result, error
 		})
 	}
 	return res, nil
+}
+
+/*
+newExportDir creates a folder under parent named for the moment, with suffix
+after it, that did not exist before: an export that a result was computed
+from is never written over, even by another export in the same second, which
+takes the next free number after the time.
+*/
+func newExportDir(parent, suffix string) (string, error) {
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return "", fmt.Errorf("create export folder: %w", err)
+	}
+	stamp := time.Now().Format("2006-01-02_150405")
+	for n := 1; n <= 100; n++ {
+		name := stamp + suffix
+		if n > 1 {
+			name = fmt.Sprintf("%s-%d%s", stamp, n, suffix)
+		}
+		dir := filepath.Join(parent, name)
+		err := os.Mkdir(dir, 0o755)
+		if err == nil {
+			return dir, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return "", fmt.Errorf("create export folder: %w", err)
+		}
+	}
+	return "", errors.New("create export folder: 100 exports already have this second's name")
 }
 
 func collect(p *annotation.Project, src *gpkg.File, name string, cats []annotation.Category) (layerData, error) {

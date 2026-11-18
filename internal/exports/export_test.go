@@ -132,3 +132,18 @@ func TestFormatNumberWritesTheTypographicMinus(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestTwoExportsInTheSameSecondGoToSeparateFolders(t *testing.T) {
+	parent := t.TempDir()
+	seen := map[string]bool{}
+	for i := 0; i < 5; i++ {
+		dir, err := newExportDir(parent, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if seen[dir] {
+			t.Fatalf("export %d reused %s", i, dir)
+		}
+		seen[dir] = true
+	}
+}
