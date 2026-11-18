@@ -45,6 +45,11 @@ the TERRA desktop application uses, so the binary needs neither cgo SQLite nor G
   45 ms and cross as 2.2 MB of JSON. Layers past 500 000 features are refused. Context
   layers (roads, the corridor, Indigenous lands) are read only for the area in view,
   through the layer's R-tree when it has one, at most 4 000 features per request.
+- **Nearest records.** `Nearest` reads a box around a point from each named layer, through
+  the R-tree, and doubles the box (from 0.005° up to 2°) until the last record it returns
+  is nearer than anything outside the box can be. On the CNEFE corridor file the six
+  records nearest to a school, across schools and health facilities, come back in about
+  1 ms.
 - **SQL filter.** The list can be narrowed by a condition on the layer's own columns. It
   runs as `SELECT fid FROM layer WHERE <condition>` on the read-only connection, and a
   condition containing `;` is refused.

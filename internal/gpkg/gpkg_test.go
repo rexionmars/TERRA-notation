@@ -267,3 +267,61 @@ func TestALayerInAProjectedSystemSaysWhyItCannotBeRead(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestDistanceMetersGivesAbout111KilometresPerDegreeOfLatitude(t *testing.T) {
+	if d := DistanceMeters(-63, -7, -63, -8); math.Abs(d-111195) > 10 {
+		t.Fatalf("one degree of latitude = %.0f m", d)
+	}
+}
+
+func TestNearestSearchesEveryNamedLayerAndWidensTheBoxUntilItIsSure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "two.gpkg")
+	w, err := Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cols := []Column{{Name: "name", Type: "TEXT"}}
+	// A school at the point itself, a health post 111 m north, and a school
+	// about 0.5 degree east, far outside the first box.
+	if err := w.AddPointLayer("schools", "", cols, []PointRow{
+		{Lon: -52.973855, Lat: -3.482511, Values: []any{"at the point"}},
+		{Lon: -52.473855, Lat: -3.482511, Values: []any{"far east"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.AddPointLayer("health", "", cols, []PointRow{
+		{Lon: -52.973855, Lat: -3.481511, Values: []any{"111 m north"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	near, err := f.Nearest([]string{"schools", "health"}, -52.973855, -3.482511, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(near) != 3 {
+		t.Fatalf("found %d", len(near))
+	}
+	got := []string{near[0].Row.Values[0].(string), near[1].Row.Values[0].(string), near[2].Row.Values[0].(string)}
+	if got[0] != "at the point" || got[1] != "111 m north" || got[2] != "far east" {
+		t.Fatalf("order = %v", got)
+	}
+	if near[0].Meters > 0.01 || near[1].Layer != "health" || math.Abs(near[1].Meters-111.2) > 0.5 {
+		t.Fatalf("near = %+v", near[:2])
+	}
+	only, err := f.Nearest([]string{"health"}, -52.973855, -3.482511, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(only) != 1 || only[0].Layer != "health" {
+		t.Fatalf("a search of one layer returned %+v", only)
+	}
+}
