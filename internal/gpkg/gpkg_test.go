@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"math"
 	"path/filepath"
 	"strings"
@@ -326,6 +327,39 @@ func TestNearestSearchesEveryNamedLayerAndWidensTheBoxUntilItIsSure(t *testing.T
 	}
 }
 
+func TestGeoJSONCarriesFidsAsIdsAndLeavesOutTheOmittedColumns(t *testing.T) {
+	f, err := Open(writeFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	b, err := f.GeoJSON("schools", []string{"matched"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fc struct {
+		Features []struct {
+			ID         int64          `json:"id"`
+			Properties map[string]any `json:"properties"`
+			Geometry   struct {
+				Coordinates []float64 `json:"coordinates"`
+			} `json:"geometry"`
+		} `json:"features"`
+	}
+	if err := json.Unmarshal(b, &fc); err != nil {
+		t.Fatal(err)
+	}
+	if len(fc.Features) != 3 || fc.Features[0].ID != 1 || fc.Features[0].Geometry.Coordinates[0] != -63.07 {
+		t.Fatalf("features = %+v", fc.Features)
+	}
+	if _, ok := fc.Features[0].Properties["matched"]; ok {
+		t.Fatal("an omitted column was sent")
+	}
+	if fc.Features[0].Properties["name"] != "ESCOLA A" {
+		t.Fatalf("properties = %v", fc.Features[0].Properties)
+	}
+}
+
 func TestLayersComeInTheOrderTheFileListsThem(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "order.gpkg")
 	w, err := Create(path)
@@ -349,5 +383,20 @@ func TestLayersComeInTheOrderTheFileListsThem(t *testing.T) {
 	}
 	if strings.Join(got, ",") != "zeta,alpha,mid" {
 		t.Fatalf("order = %v", got)
+	}
+}
+
+func TestGeoJSONSendsOnlyTheKeptColumnsWhenAsked(t *testing.T) {
+	f, err := Open(writeFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	b, err := f.GeoJSON("schools", nil, []string{"name"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"name":"ESCOLA A"`) || strings.Contains(string(b), `"km"`) {
+		t.Fatalf("GeoJSON = %s", b)
 	}
 }

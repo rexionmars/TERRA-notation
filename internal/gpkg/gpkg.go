@@ -14,6 +14,7 @@ package gpkg
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -454,7 +455,9 @@ func (f *File) eachIn(l *layerInfo, bbox BBox, limit int, each func(Row, Decoded
 		rows *sql.Rows
 		err  error
 	)
-	if l.rtree != "" {
+	// An unbounded box reads the table: the index would only add a join, and
+	// infinities do not survive the conversion to Web Mercator.
+	if l.rtree != "" && !math.IsInf(bbox.MinX, 0) && !math.IsInf(bbox.MaxX, 0) {
 		minX, minY := l.unproject(bbox.MinX, bbox.MinY)
 		maxX, maxY := l.unproject(bbox.MaxX, bbox.MaxY)
 		q := fmt.Sprintf(`SELECT %s FROM %s WHERE %s IN (
@@ -487,4 +490,48 @@ func (f *File) eachIn(l *layerInfo, bbox BBox, limit int, each func(Row, Decoded
 		return false, fmt.Errorf("read layer %s: %w", l.Name, err)
 	}
 	return false, nil
+}
+
+// MaxWholeLayerFeatures bounds the layers sent to the map whole. A larger one,
+// such as a road network, is read for the area in view instead.
+const MaxWholeLayerFeatures = 50_000
+
+// GeoJSON writes a whole layer as a GeoJSON FeatureCollection. Each feature
+// carries its fid as id, which the map needs for per-feature state, and its
+// attributes as properties: only the columns named in keep when keep is not
+// empty, and never the columns named in omit.
+func (f *File) GeoJSON(name string, omit, keep []string) ([]byte, error) {
+	l, err := f.layer(name)
+	if err != nil {
+		return nil, err
+	}
+	if l.FeatureCount > MaxWholeLayerFeatures {
+		return nil, fmt.Errorf("layer %s has %d features; whole layers are sent up to %d", name, l.FeatureCount, MaxWholeLayerFeatures)
+	}
+	skip := map[string]bool{}
+	for _, c := range omit {
+		skip[c] = true
+	}
+	only := map[string]bool{}
+	for _, c := range keep {
+		only[c] = true
+	}
+	fc := FeatureCollection{Type: "FeatureCollection", Features: make([]Feature, 0, l.FeatureCount)}
+	all := BBox{MinX: math.Inf(-1), MinY: math.Inf(-1), MaxX: math.Inf(1), MaxY: math.Inf(1)}
+	if _, err := f.eachIn(l, all, int(l.FeatureCount)+1, func(row Row, d Decoded) {
+		props := make(map[string]any, len(l.Columns))
+		for i, c := range l.Columns {
+			if !skip[c.Name] && (len(only) == 0 || only[c.Name]) {
+				props[c.Name] = row.Values[i]
+			}
+		}
+		fc.Features = append(fc.Features, Feature{Type: "Feature", ID: row.FID, Geometry: d.Geometry, Properties: props})
+	}); err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(fc)
+	if err != nil {
+		return nil, fmt.Errorf("write layer %s as GeoJSON: %w", name, err)
+	}
+	return b, nil
 }
