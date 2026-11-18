@@ -91,6 +91,8 @@ export interface ProjectInfo {
   source_status: SourceStatus
   current_sha256: string
   settings: Settings
+  /** layers with a current sample */
+  sampled_layers: string[] | null
 }
 
 export interface ProjectState {
@@ -228,4 +230,58 @@ export interface ExportResult {
     revisions: number
     without_position: number
   }[]
+}
+
+export type Allocation = "equal" | "proportional"
+
+/** The project a second reading was made from. */
+export interface Origin {
+  dir: string
+  name: string
+  created_at: string
+  annotator: string
+  sample_id: number | null
+}
+
+export interface SampleDesign {
+  layer: string
+  kind: "sample" | "second_reading" | ""
+  /** SQL condition on the layer's columns; "" for every record */
+  condition: string
+  /** "" for a simple sample */
+  stratum_column: string
+  allocation: Allocation | ""
+  size: number
+  per_stratum: number
+  origin?: Origin | null
+}
+
+export interface Stratum {
+  /** the column's value as text; "" for an empty value */
+  value: string
+  population: number
+  drawn: number
+}
+
+export interface Sample {
+  id: number
+  design: SampleDesign
+  seed: number
+  population: number
+  strata: Stratum[]
+  created_at: string
+  answers_before: number
+  superseded_at: string | null
+}
+
+export interface Pace {
+  timed: number
+  median_seconds: number
+}
+
+export interface SampleState {
+  sample: Sample | null
+  /** the sample's records in their order */
+  fids: number[]
+  pace: Pace
 }

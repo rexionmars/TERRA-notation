@@ -277,6 +277,7 @@ export namespace annotation {
 	    source_status: string;
 	    current_sha256: string;
 	    settings: Settings;
+	    sampled_layers: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Info(source);
@@ -291,6 +292,7 @@ export namespace annotation {
 	        this.source_status = source["source_status"];
 	        this.current_sha256 = source["current_sha256"];
 	        this.settings = this.convertValues(source["settings"], Settings);
+	        this.sampled_layers = source["sampled_layers"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -311,6 +313,146 @@ export namespace annotation {
 		    return a;
 		}
 	}
+	
+	export class Origin {
+	    dir: string;
+	    name: string;
+	    created_at: string;
+	    annotator: string;
+	    sample_id?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Origin(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.dir = source["dir"];
+	        this.name = source["name"];
+	        this.created_at = source["created_at"];
+	        this.annotator = source["annotator"];
+	        this.sample_id = source["sample_id"];
+	    }
+	}
+	export class Pace {
+	    timed: number;
+	    median_seconds: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Pace(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timed = source["timed"];
+	        this.median_seconds = source["median_seconds"];
+	    }
+	}
+	export class Stratum {
+	    value: string;
+	    population: number;
+	    drawn: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Stratum(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.value = source["value"];
+	        this.population = source["population"];
+	        this.drawn = source["drawn"];
+	    }
+	}
+	export class SampleDesign {
+	    layer: string;
+	    kind: string;
+	    condition: string;
+	    stratum_column: string;
+	    allocation: string;
+	    size: number;
+	    per_stratum: number;
+	    origin?: Origin;
+	
+	    static createFrom(source: any = {}) {
+	        return new SampleDesign(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.layer = source["layer"];
+	        this.kind = source["kind"];
+	        this.condition = source["condition"];
+	        this.stratum_column = source["stratum_column"];
+	        this.allocation = source["allocation"];
+	        this.size = source["size"];
+	        this.per_stratum = source["per_stratum"];
+	        this.origin = this.convertValues(source["origin"], Origin);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Sample {
+	    id: number;
+	    design: SampleDesign;
+	    seed: number;
+	    population: number;
+	    strata: Stratum[];
+	    created_at: string;
+	    answers_before: number;
+	    superseded_at?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Sample(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.design = this.convertValues(source["design"], SampleDesign);
+	        this.seed = source["seed"];
+	        this.population = source["population"];
+	        this.strata = this.convertValues(source["strata"], Stratum);
+	        this.created_at = source["created_at"];
+	        this.answers_before = source["answers_before"];
+	        this.superseded_at = source["superseded_at"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	
 	
 	
@@ -808,6 +950,40 @@ export namespace main {
 	        this.opened_at = source["opened_at"];
 	        this.exists = source["exists"];
 	    }
+	}
+	export class SampleState {
+	    sample?: annotation.Sample;
+	    fids: number[];
+	    pace: annotation.Pace;
+	
+	    static createFrom(source: any = {}) {
+	        return new SampleState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sample = this.convertValues(source["sample"], annotation.Sample);
+	        this.fids = source["fids"];
+	        this.pace = this.convertValues(source["pace"], annotation.Pace);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

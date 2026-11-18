@@ -51,3 +51,10 @@ export function formatLength(m: number): string {
   if (m >= 1000) return `${formatNumber(m / 1000, m % 1000 === 0 ? 0 : 1)} km`
   return `${formatNumber(m, 0)} m`
 }
+
+/** A duration in the unit a reader takes in at a glance: s, min or h. */
+export function formatDuration(seconds: number): string {
+  if (seconds < 90) return `${Math.round(seconds)} s`
+  if (seconds < 90 * 60) return `${Math.round(seconds / 60)} min`
+  return `${formatNumber(seconds / 3600, seconds < 10 * 3600 ? 1 : 0)} h`
+}

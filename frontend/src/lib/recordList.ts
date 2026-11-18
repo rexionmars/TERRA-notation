@@ -10,7 +10,14 @@ import type { Row, Summary } from "./types"
 */
 
 export type StatusFilter =
-  "all" | "uncategorized" | "categorized" | "no_reference_image" | `category:${string}`
+  | "all"
+  | "uncategorized"
+  | "categorized"
+  | "no_reference_image"
+  | "sample"
+  | "sample_open"
+  | "sample_passed_over"
+  | `category:${string}`
 
 export type ListOrder = "fid" | "random"
 
@@ -20,6 +27,27 @@ export interface ListQuery {
   order: ListOrder
   /** ids the SQL filter selected; null when no filter is applied */
   sqlIds: Set<number> | null
+  /** the layer's sample, its ids in their order; null when it has none */
+  sample: number[] | null
+}
+
+const hasCategory = (summaries: Map<number, Summary>, fid: number) =>
+  (summaries.get(fid)?.category ?? "") !== ""
+
+/**
+ * The records of a sample without a category that come before its last
+ * answer: passed over, where a gap can bias an estimate. Records after the
+ * last answer are not reached yet. (exports.sampleStatus says the same.)
+ */
+export function passedOver(
+  sample: number[],
+  summaries: Map<number, Summary>
+): Set<number> {
+  let last = -1
+  sample.forEach((fid, i) => {
+    if (hasCategory(summaries, fid)) last = i
+  })
+  return new Set(sample.filter((fid, i) => i < last && !hasCategory(summaries, fid)))
 }
 
 /** mulberry32, a small seeded generator; enough to shuffle a list. */
@@ -53,11 +81,27 @@ export function fold(s: string): string {
     .toLowerCase()
 }
 
-function matchesStatus(s: Summary | undefined, status: StatusFilter): boolean {
+interface SampleSets {
+  members: Set<number>
+  passed: Set<number>
+}
+
+function matchesStatus(
+  fid: number,
+  s: Summary | undefined,
+  status: StatusFilter,
+  sample: SampleSets
+): boolean {
   const category = s?.category ?? ""
   switch (status) {
     case "all":
       return true
+    case "sample":
+      return sample.members.has(fid)
+    case "sample_open":
+      return sample.members.has(fid) && category === ""
+    case "sample_passed_over":
+      return sample.passed.has(fid)
     case "uncategorized":
       return category === ""
     case "categorized":
@@ -82,9 +126,16 @@ export function visibleRows(
   seed: number
 ): Row[] {
   const needle = fold(query.search.trim())
+  const sample: SampleSets = {
+    members: new Set(query.sample ?? []),
+    passed:
+      query.status === "sample_passed_over"
+        ? passedOver(query.sample ?? [], summaries)
+        : new Set(),
+  }
   const keep = rows.filter((r) => {
     if (query.sqlIds && !query.sqlIds.has(r.fid)) return false
-    if (!matchesStatus(summaries.get(r.fid), query.status)) return false
+    if (!matchesStatus(r.fid, summaries.get(r.fid), query.status, sample)) return false
     if (needle === "") return true
     if (String(r.fid) === needle) return true
     return searchColumns.some((i) => {

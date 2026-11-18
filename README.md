@@ -47,7 +47,19 @@ identifier, which changed with the name and is now fixed in `build/darwin/Info.p
    searched (accents ignored), filtered by category, by "without a reference screenshot", or
    by an SQL condition on the layer's own columns (`matched = 0 AND distance_to_road_km > 5`),
    and ordered by feature id or in a random order drawn from the project's seed.
-3. For each record:
+3. **Draw a sample** (Sample, in the top bar) before looking at the records, when the shares
+   of categories are to be estimates for the layer. Choose the population (every record, or
+   an SQL condition), and either a number of records or a column to stratify by, with the
+   same number from each stratum or a total shared in proportion to their sizes. Preview
+   shows each stratum's size and what would be drawn; Draw fixes it. The sample is drawn in
+   the list's random order and does not change afterwards; the seed is fixed with it.
+   Drawing another replaces it and keeps the old one in the project. The bar then counts
+   the answered records of the sample and the ones passed over (without a category, before
+   the last answer), and the list filters to the sample, its records without a category,
+   or those passed over. The Sample window gives the median time from opening a record to
+   its first answer and what the rest takes at that pace. If the study compares the values
+   of the stratum column, hide it in Settings first.
+4. For each record:
    - **C** captures the map on the left. `G` opens Google Maps (satellite) at the
      coordinates, `P` drops a pin there, `V` opens Street View.
    - **R** hides the window so you can select a region of the screen (the browser with
@@ -131,6 +143,8 @@ copy; it refuses the upgraded file.
 | `annotations_<layer>.csv` | one row per record with an answer or a screenshot: category and its label, first category, number of revisions, reference label, the date of the reference imagery and whether it was recorded, not shown or not recorded, the date and source of the Esri imagery in the map capture, notes, annotator, times, screenshot paths and SHA-256, the source file and its SHA-256, and every source attribute as `gpkg_<column>` |
 | `history_<layer>.csv` | every saved revision, in order, with the moment the record was opened before it |
 | `annotations.gpkg` | one point layer per annotated layer, `<layer>_annotations`, with the answer and the source attributes, for QGIS |
+| `samples.csv`, `sample_strata.csv` | each sample's design (population, strata, allocation, seed, when it was drawn and replaced, answers that existed before it), and each stratum's size and the number drawn |
+| `sample_<id>.csv` | the records of a sample in their order, with their stratum and status: answered, passed over, or not reached |
 | `report.html` | each record with its two screenshots side by side, grouped by category, with counts |
 
 ## Network

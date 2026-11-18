@@ -1,13 +1,30 @@
 import { describe, expect, it } from "vitest"
 import { metersPerPixel, scaleBar } from "./capture"
-import { formatCount, formatLength, formatNumber, formatValue } from "./format"
+import {
+  formatCount,
+  formatDuration,
+  formatLength,
+  formatNumber,
+  formatValue,
+} from "./format"
 import { googlePin, googleSatellite } from "./links"
-import { fold, seededOrder, visibleRows, type ListQuery } from "./recordList"
+import {
+  fold,
+  passedOver,
+  seededOrder,
+  visibleRows,
+  type ListQuery,
+} from "./recordList"
 import type { Row, Summary } from "./types"
 
 describe("format", () => {
   it("writes negative numbers with the typographic minus", () => {
     expect(formatNumber(-7.5509, 3)).toBe("\u22127.551")
+  })
+  it("gives a duration in seconds, minutes or hours", () => {
+    expect(formatDuration(48)).toBe("48 s")
+    expect(formatDuration(600)).toBe("10 min")
+    expect(formatDuration(4.5 * 3600)).toBe("4.5 h")
   })
   it("groups thousands with a narrow no-break space", () => {
     expect(formatCount(8054)).toBe("8\u202f054")
@@ -67,6 +84,7 @@ describe("record list", () => {
     status: "all",
     order: "fid",
     sqlIds: null,
+    sample: null,
     ...over,
   })
 
@@ -88,6 +106,16 @@ describe("record list", () => {
       )
     ).toEqual([2])
   })
+  it("shows the sample, its records without a category, and those passed over", () => {
+    const sample = [4, 2, 1]
+    const ids = (status: ListQuery["status"]) =>
+      visibleRows(rows, summaries, q({ status, sample }), [0], 1).map((r) => r.fid)
+    expect(ids("sample")).toEqual([1, 2, 4])
+    expect(ids("sample_open")).toEqual([1, 4])
+    // 4 comes before 2, the last answer of the sample; 1 is not reached yet.
+    expect(ids("sample_passed_over")).toEqual([4])
+    expect([...passedOver(sample, summaries)]).toEqual([4])
+  })
   it("keeps the random order when the list is narrowed", () => {
     const all = visibleRows(rows, summaries, q({ order: "random" }), [0], 48213).map(
       (r) => r.fid
@@ -104,5 +132,14 @@ describe("record list", () => {
   it("draws the same permutation from the same seed whatever the input order", () => {
     expect(seededOrder([5, 3, 1, 4, 2], 7)).toEqual(seededOrder([1, 2, 3, 4, 5], 7))
     expect(seededOrder([1, 2, 3, 4, 5], 7)).not.toEqual(seededOrder([1, 2, 3, 4, 5], 8))
+  })
+  it("gives the order the Go side draws samples in", () => {
+    // The same vectors guard annotation.SeededOrder (sample_test.go).
+    const ids = Array.from({ length: 20 }, (_, i) => i + 1)
+    expect(seededOrder(ids, 48213)).toEqual([
+      1, 20, 16, 9, 12, 10, 6, 8, 3, 4, 13, 5, 18, 17, 14, 19, 2, 11, 15, 7,
+    ])
+    expect(seededOrder([5, 3, 100, 42, 8, 1], 7)).toEqual([42, 3, 5, 8, 100, 1])
+    expect(seededOrder([10, 20, 30, 40], 0)).toEqual([40, 30, 10, 20])
   })
 })

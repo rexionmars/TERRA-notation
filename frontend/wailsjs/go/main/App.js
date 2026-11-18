@@ -22,8 +22,16 @@ export function CurrentProject() {
   return window['go']['main']['App']['CurrentProject']();
 }
 
+export function CurrentSample(arg1) {
+  return window['go']['main']['App']['CurrentSample'](arg1);
+}
+
 export function DefaultAnnotator() {
   return window['go']['main']['App']['DefaultAnnotator']();
+}
+
+export function DrawSample(arg1, arg2) {
+  return window['go']['main']['App']['DrawSample'](arg1, arg2);
 }
 
 export function EsriImagery(arg1, arg2) {
@@ -80,6 +88,10 @@ export function PickGeoPackage() {
 
 export function PickImageFile(arg1, arg2, arg3) {
   return window['go']['main']['App']['PickImageFile'](arg1, arg2, arg3);
+}
+
+export function PreviewSample(arg1) {
+  return window['go']['main']['App']['PreviewSample'](arg1);
 }
 
 export function RecentProjects() {

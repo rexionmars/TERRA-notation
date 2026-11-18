@@ -16,7 +16,11 @@ export function CreateProject(arg1:main.NewProject):Promise<main.ProjectState>;
 
 export function CurrentProject():Promise<main.ProjectState>;
 
+export function CurrentSample(arg1:string):Promise<main.SampleState>;
+
 export function DefaultAnnotator():Promise<string>;
+
+export function DrawSample(arg1:annotation.SampleDesign,arg2:boolean):Promise<main.SampleState>;
 
 export function EsriImagery(arg1:number,arg2:number):Promise<Array<imagery.Source>>;
 
@@ -45,6 +49,8 @@ export function PickFolder(arg1:string):Promise<string>;
 export function PickGeoPackage():Promise<string>;
 
 export function PickImageFile(arg1:string,arg2:number,arg3:string):Promise<annotation.Image>;
+
+export function PreviewSample(arg1:annotation.SampleDesign):Promise<annotation.Sample>;
 
 export function RecentProjects():Promise<Array<main.RecentProject>>;
 

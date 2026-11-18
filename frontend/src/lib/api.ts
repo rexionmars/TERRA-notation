@@ -19,6 +19,9 @@ import type {
   ProjectState,
   RecentProject,
   Entry,
+  Sample,
+  SampleDesign,
+  SampleState,
   Settings,
   Side,
   Summary,
@@ -82,6 +85,12 @@ export const api = {
   removeImage: (id: number) => App.RemoveImage(id),
 
   exportProject: () => as<ExportResult>(App.Export()),
+
+  previewSample: (d: SampleDesign) =>
+    as<Sample>(App.PreviewSample(d as unknown as annotation.SampleDesign)),
+  drawSample: (d: SampleDesign, replace: boolean) =>
+    as<SampleState>(App.DrawSample(d as unknown as annotation.SampleDesign, replace)),
+  currentSample: (layer: string) => as<SampleState>(App.CurrentSample(layer)),
 }
 
 /** The text of a failure, whatever shape it reached the page in. */

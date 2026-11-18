@@ -22,7 +22,12 @@ import {
 import { googlePin, googleSatellite, googleStreetView } from "@/lib/links"
 import { readStored, usePersisted, writeStored } from "@/lib/persist"
 import { normalizeReferenceDate, REFERENCE_DATE_NOT_SHOWN } from "@/lib/referenceDate"
-import { visibleRows, type ListOrder, type StatusFilter } from "@/lib/recordList"
+import {
+  passedOver,
+  visibleRows,
+  type ListOrder,
+  type StatusFilter,
+} from "@/lib/recordList"
 import type {
   ExportResult,
   HistoryEntry,
@@ -35,6 +40,7 @@ import type {
   ProjectState,
   Entry,
   Row,
+  SampleState,
   Side,
   Summary,
   Table,
@@ -52,6 +58,7 @@ import {
 import { CaretDown, CaretRight, Copy, Warning } from "@/components/icons"
 import { MapTools } from "@/components/MapTools"
 import { RecordList } from "@/components/RecordList"
+import { SampleDialog } from "@/components/SampleDialog"
 import { SettingsDialog } from "@/components/SettingsDialog"
 import { Slot } from "@/components/Slot"
 import { BarButton, PathStep, TitleBar } from "@/components/TitleBar"
@@ -253,6 +260,9 @@ export function AnnotatePage({
 
   const [compare, setCompare] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [sampleOpen, setSampleOpen] = useState(false)
+  // The open layer's sample, with the pace of annotation on the layer.
+  const [sampleState, setSampleState] = useState<SampleState | null>(null)
   const [exported, setExported] = useState<ExportResult | null>(null)
   const [relinkPath, setRelinkPath] = useState<string | null>(null)
 
@@ -291,6 +301,25 @@ export function AnnotatePage({
       cancelled = true
     }
   }, [layer?.name])
+
+  useEffect(() => {
+    setSampleState(null)
+    if (!layer) return
+    let cancelled = false
+    api
+      .currentSample(layer.name)
+      .then((s) => !cancelled && setSampleState(s))
+      .catch((e) => !cancelled && setError(errorText(e)))
+    return () => {
+      cancelled = true
+    }
+  }, [layer?.name])
+  const sampleFids = sampleState?.sample ? sampleState.fids : null
+  // A filter on the sample means nothing on a layer without one.
+  useEffect(() => {
+    if (sampleState && !sampleState.sample && status.startsWith("sample"))
+      setStatus("all")
+  }, [sampleState])
 
   // Which records have an answer, for every point layer, so the map can ring them.
   useEffect(() => {
@@ -368,12 +397,32 @@ export function AnnotatePage({
         ? visibleRows(
             table.rows,
             summaries,
-            { search, status, order, sqlIds },
+            { search, status, order, sqlIds, sample: sampleFids },
             searchCols,
             settings.seed
           )
         : [],
-    [table, summaries, search, status, order, sqlIds, searchCols, settings.seed]
+    [
+      table,
+      summaries,
+      search,
+      status,
+      order,
+      sqlIds,
+      sampleFids,
+      searchCols,
+      settings.seed,
+    ]
+  )
+  const sampleAnswered = useMemo(
+    () =>
+      (sampleFids ?? []).filter((f) => (summaries.get(f)?.category ?? "") !== "")
+        .length,
+    [sampleFids, summaries]
+  )
+  const samplePassedOver = useMemo(
+    () => (sampleFids ? passedOver(sampleFids, summaries).size : 0),
+    [sampleFids, summaries]
   )
   // The layer's extent, which tells a latitude-longitude pair from a reversed one.
   const extent = useMemo<Extent | null>(() => {
@@ -534,6 +583,14 @@ export function AnnotatePage({
     setSqlText("")
     setSqlError("")
     setLayerName(name)
+  }
+
+  // The sample is worked through in its order: its first record without a
+  // category is where to go on, unless the open record is in it.
+  const openSampleStart = (fids: number[]) => {
+    if (fid !== null && fids.includes(fid)) return
+    const next = fids.find((f) => (summaries.get(f)?.category ?? "") === "") ?? fids[0]
+    if (next !== undefined) void selectFid(next)
   }
 
   const toggleHistory = async () => {
@@ -866,7 +923,7 @@ export function AnnotatePage({
 
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {})
   keyRef.current = (e) => {
-    if (compare || settingsOpen || exported || relinkPath) return
+    if (compare || settingsOpen || sampleOpen || exported || relinkPath) return
     const mod = e.metaKey || e.ctrlKey
     const k = e.key.toLowerCase()
     if (mod && k === "s") {
@@ -1076,14 +1133,48 @@ export function AnnotatePage({
           </label>,
         ]}
       >
-        {table && (
-          <span className="mr-3 shrink-0 text-label text-muted-foreground">
-            <span className="telemetry text-foreground">
-              {formatCount(categorized.size)}
-            </span>{" "}
-            of <span className="telemetry">{formatCount(total)}</span> with a category
-          </span>
-        )}
+        {table &&
+          (sampleFids ? (
+            <span className="mr-3 shrink-0 text-label text-muted-foreground">
+              <span className="telemetry text-foreground">
+                {formatCount(sampleAnswered)}
+              </span>{" "}
+              of <span className="telemetry">{formatCount(sampleFids.length)}</span> in
+              the sample
+              {samplePassedOver > 0 && (
+                <span className="text-warning">
+                  {" "}
+                  · <span className="telemetry">
+                    {formatCount(samplePassedOver)}
+                  </span>{" "}
+                  passed over
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="mr-3 shrink-0 text-label text-muted-foreground">
+              <span className="telemetry text-foreground">
+                {formatCount(categorized.size)}
+              </span>{" "}
+              of <span className="telemetry">{formatCount(total)}</span> with a category
+            </span>
+          ))}
+        <BarButton
+          disabled={!layer || !!project.source_error}
+          onClick={() => {
+            if (!layer) return
+            // The pace has moved with every save since the sample was read.
+            void api
+              .currentSample(layer.name)
+              .then((s) => {
+                setSampleState(s)
+                setSampleOpen(true)
+              })
+              .catch((e) => setError(errorText(e)))
+          }}
+        >
+          Sample
+        </BarButton>
         <BarButton onClick={() => setSettingsOpen(true)}>Settings</BarButton>
         <BarButton disabled={busy} onClick={() => void runExport()}>
           Export
@@ -1141,6 +1232,17 @@ export function AnnotatePage({
                 <option value="no_reference_image">
                   Without a reference screenshot
                 </option>
+                {sampleFids && (
+                  <>
+                    <option value="sample">In the sample</option>
+                    <option value="sample_open">
+                      In the sample, without a category
+                    </option>
+                    <option value="sample_passed_over">
+                      In the sample, passed over
+                    </option>
+                  </>
+                )}
                 {settings.categories.map((c) => (
                   <option key={c.id} value={`category:${c.id}`}>
                     {c.label}
@@ -1177,7 +1279,7 @@ export function AnnotatePage({
                 <textarea
                   className={cn(
                     inputClass,
-                    "h-14 resize-none py-1 font-mono text-meta"
+                    "h-14 resize-none py-1 font-mono text-meta [font-variant-ligatures:none]"
                   )}
                   aria-label="SQL condition"
                   placeholder="matched = 0 AND distance_to_road_km > 5"
@@ -1536,10 +1638,38 @@ export function AnnotatePage({
       {settingsOpen && layer && (
         <SettingsDialog
           settings={settings}
+          seedFixed={(info.sampled_layers ?? []).length > 0}
           layer={layer.name}
           columns={columns}
           onSave={async (s) => onProjectChange(await api.updateSettings(s))}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
+      {sampleOpen && layer && sampleState && (
+        <SampleDialog
+          layer={layer.name}
+          columns={columns}
+          hidden={hidden}
+          state={sampleState}
+          answered={sampleAnswered}
+          passedOver={samplePassedOver}
+          onDrawn={(s) => {
+            setSampleState(s)
+            setSampleOpen(false)
+            setStatus("sample")
+            setOrder("random")
+            openSampleStart(s.fids)
+            flash(`Sample drawn: ${formatCount(s.fids.length)} records`)
+            void api.currentProject().then(onProjectChange)
+          }}
+          onShowSample={() => {
+            setStatus("sample")
+            setOrder("random")
+            setSampleOpen(false)
+            openSampleStart(sampleState.fids)
+          }}
+          onClose={() => setSampleOpen(false)}
         />
       )}
 

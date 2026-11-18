@@ -69,13 +69,15 @@ images/<layer>/<fid>/source-<UTC time>.png, reference-<UTC time>.png
 exports/<local date_time>/
 ```
 
-`annotations.sqlite` has four tables:
+`annotations.sqlite` has six tables:
 
 | Table | Holds |
 |---|---|
 | `project` | key-value rows: schema version, name, creation time, the source file (path, SHA-256, size) and the settings as JSON |
 | `annotation` | the current answer per `(layer, fid)`: category, `first_category`, reference label, the date of the reference imagery, notes, annotator, times, revision, and a snapshot of the record's id, name and position read from the GeoPackage at save time |
 | `annotation_history` | one row per saved revision, with the screenshots current at that moment and `opened_at`, when the page opened the record before that save; triggers abort any `UPDATE` or `DELETE` |
+| `sample` | one row per drawn sample: the design as JSON, the seed, the population, the strata with their sizes and the numbers drawn, when it was drawn, `answers_before`, and `superseded_at` once another replaced it |
+| `sample_record` | the records of each sample, with their stratum and `draw_order`; triggers abort any `UPDATE` or `DELETE`, as they do for `sample` except for setting `superseded_at` once |
 | `image` | one row per screenshot: path, SHA-256, size in bytes and pixels, origin (map, screen region, clipboard, file), capture time, for a map capture the date and source of the imagery at the record, and `removed_at` once it is no longer current |
 
 Rules the code keeps:
@@ -114,6 +116,39 @@ Screenshots reach the page through a Wails asset-server middleware under
 It is middleware, not `Handler`, because the single-page build answers every unknown path
 with `index.html` before a `Handler` would be asked. `ImageFile` refuses any path outside
 `images/`.
+
+## Samples
+
+A share of categories counted over whatever records were looked at describes those
+records; drawn as a probability sample before the annotation, it estimates the layer's.
+`internal/annotation/sample.go` draws and keeps samples.
+
+- **The order is the list's.** `SeededOrder` is `seededOrder` of `lib/recordList.ts` step
+  for step (mulberry32 on uint32, Fisher–Yates over the sorted ids), and the same vectors
+  are tested on both sides. A simple sample is the first n records of the population in
+  that order; a stratified one, the first n_h of each stratum. So the sample read in the
+  list's random order is the order it was drawn in, and a filter on the sample does not
+  reshuffle it.
+- **Allocation.** Equal: the same number from every stratum, or all of a smaller one.
+  Proportional: the total shared by stratum size, floors first and the rest by largest
+  remainder, a tie going to the stratum listed first (strata are sorted by value). A
+  column with more than 100 values is refused as a stratum column.
+- **The population** is read in Go from the GeoPackage: every feature id of the layer for
+  the order, and those the SQL condition keeps (through the read-only `FilterFIDs`), with
+  the stratum column's value as text. The page gets the strata's counts and the sample's
+  ids in order, not each record's stratum, so a stratum column hidden while annotating is
+  not handed to it record by record.
+- **Fixed.** A layer has one current sample (a partial unique index). Replacing it needs
+  `replace` and sets `superseded_at` on the old one, whose rows stay. The seed cannot
+  change once any sample exists: `UpdateSettings` refuses it.
+- **What it says about itself.** `answers_before` counts the records of the layer that had
+  a category when the sample was drawn, answers seen before the design was fixed. At
+  export a record of the sample is answered, passed over (no category, before the last
+  answered record in the sample's order) or not reached (after it). Passed-over records
+  are the gap that can bias an estimate; not-reached ones only make it smaller.
+- **Pace.** `LayerPace` takes, for each record, the first save with a category and its
+  `opened_at`, and reports the median of the differences: a record left open over a break
+  is one long time, not a slow annotator.
 
 ## The page
 

@@ -62,12 +62,15 @@ const emptyLayer: LayerSettings = {
 /** The project's choices: annotator, categories, seed, and how a layer is shown. */
 export function SettingsDialog({
   settings,
+  seedFixed,
   layer,
   columns,
   onSave,
   onClose,
 }: {
   settings: Settings
+  /** a sample was drawn with the seed */
+  seedFixed: boolean
   layer: string
   columns: Column[]
   onSave: (s: Settings) => Promise<void>
@@ -163,11 +166,16 @@ export function SettingsDialog({
             </Field>
             <Field
               label="Seed of the random order"
-              hint="The same seed gives the same order of records on any machine."
+              hint={
+                seedFixed
+                  ? "It drew a sample, so it is fixed: the random order stays the order the sample was drawn in."
+                  : "The same seed gives the same order of records on any machine."
+              }
             >
               <input
                 className={cn(inputClass, "font-mono")}
                 type="number"
+                disabled={seedFixed}
                 value={s.seed}
                 onChange={(e) =>
                   setS({ ...s, seed: Math.trunc(Number(e.target.value)) || 0 })

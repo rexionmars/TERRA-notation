@@ -109,6 +109,11 @@ func Write(p *annotation.Project, src *gpkg.File, parent string) (*Result, error
 		}
 		res.Files = append(res.Files, f, h)
 	}
+	sampleFiles, err := writeSamples(dir, p, labels)
+	if err != nil {
+		return nil, err
+	}
+	res.Files = append(res.Files, sampleFiles...)
 	g := filepath.Join(dir, "annotations.gpkg")
 	counts, err := writeGeoPackage(g, all, labels, info)
 	if err != nil {

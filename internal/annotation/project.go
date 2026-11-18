@@ -160,6 +160,8 @@ type Info struct {
 	// differs from the recorded one.
 	CurrentSHA256 string   `json:"current_sha256"`
 	Settings      Settings `json:"settings"`
+	// SampledLayers are the layers with a current sample.
+	SampledLayers []string `json:"sampled_layers"`
 }
 
 // DefaultCategories are offered to a new project and can be edited in it.
@@ -380,6 +382,9 @@ func (p *Project) Info() (Info, error) {
 	if info.Settings, err = p.Settings(); err != nil {
 		return info, err
 	}
+	if info.SampledLayers, err = p.SampledLayers(); err != nil {
+		return info, err
+	}
 	current, err := HashFile(info.Source.Path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
@@ -447,6 +452,22 @@ func validateCategories(cats []Category) error {
 func (p *Project) UpdateSettings(s Settings) error {
 	if err := validateCategories(s.Categories); err != nil {
 		return err
+	}
+	// The seed drew every sample; a sample is read again from its own rows,
+	// but the list's random order must stay the order it was drawn in.
+	old, err := p.Settings()
+	if err != nil {
+		return err
+	}
+	if s.Seed != old.Seed {
+		var layer string
+		err := p.db.QueryRow(`SELECT layer FROM sample ORDER BY id LIMIT 1`).Scan(&layer)
+		if err == nil {
+			return fmt.Errorf("the seed %d drew the sample of %s and cannot change", old.Seed, layer)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("check samples: %w", err)
+		}
 	}
 	keep := map[string]bool{}
 	for _, c := range s.Categories {

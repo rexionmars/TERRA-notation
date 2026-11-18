@@ -27,6 +27,37 @@ ALTER TABLE annotation_history ADD COLUMN opened_at TEXT;`,
 	// the record.
 	`ALTER TABLE image ADD COLUMN imagery_date TEXT NOT NULL DEFAULT '';
 ALTER TABLE image ADD COLUMN imagery_source TEXT NOT NULL DEFAULT '';`,
+	// 4: samples. A drawn sample and its records are never changed or
+	// deleted; a replaced sample only gains superseded_at.
+	`CREATE TABLE sample (
+  id INTEGER PRIMARY KEY,
+  layer TEXT NOT NULL,
+  design TEXT NOT NULL,
+  seed INTEGER NOT NULL,
+  population INTEGER NOT NULL,
+  strata TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  answers_before INTEGER NOT NULL,
+  superseded_at TEXT
+);
+CREATE UNIQUE INDEX sample_current ON sample (layer) WHERE superseded_at IS NULL;
+CREATE TABLE sample_record (
+  sample_id INTEGER NOT NULL REFERENCES sample (id),
+  fid INTEGER NOT NULL,
+  stratum TEXT NOT NULL,
+  draw_order INTEGER NOT NULL,
+  PRIMARY KEY (sample_id, fid)
+);
+CREATE TRIGGER sample_fixed BEFORE UPDATE OF layer, design, seed, population, strata, created_at, answers_before ON sample
+BEGIN SELECT RAISE(ABORT, 'a drawn sample is not changed'); END;
+CREATE TRIGGER sample_superseded_once BEFORE UPDATE OF superseded_at ON sample WHEN OLD.superseded_at IS NOT NULL
+BEGIN SELECT RAISE(ABORT, 'a drawn sample is not changed'); END;
+CREATE TRIGGER sample_kept BEFORE DELETE ON sample
+BEGIN SELECT RAISE(ABORT, 'a drawn sample is not deleted'); END;
+CREATE TRIGGER sample_record_fixed BEFORE UPDATE ON sample_record
+BEGIN SELECT RAISE(ABORT, 'a drawn sample is not changed'); END;
+CREATE TRIGGER sample_record_kept BEFORE DELETE ON sample_record
+BEGIN SELECT RAISE(ABORT, 'a drawn sample is not deleted'); END;`,
 }
 
 // schemaVersion is the version this build of the application writes.
