@@ -305,6 +305,18 @@ was computed from is never overwritten:
   carries the GeoPackage metadata tables the standard requires, and GDAL opens it.
   Source columns whose names collide with the answer's fields are written as
   `gpkg_<column>`.
+- **`estimates_<layer>.csv`** and the report's tables: the share of each category over the
+  answered records of the layer's current sample, by current answer. A simple sample's
+  share has the Wilson score interval (checked against R's `prop.test(correct = FALSE)`).
+  A stratified sample gives each stratum's share with Wilson and the population's as
+  `sum W_h p_h`, `W_h = N_h / N`, with variance
+  `sum W_h^2 (1 - n_h/N_h) p_h (1 - p_h) / (n_h - 1)` and a normal 95 % interval. That
+  interval is not computed, with the reason written beside it, when a stratum has fewer
+  than two answers or when every stratum's share is 0 or 1, where it would have no width.
+  The report says how many records of the sample are answered, passed over and not
+  reached, since the estimate takes the unanswered ones to be like the answered ones of
+  their stratum. Without a sample the shares describe the answered records only and carry
+  no interval.
 - **`report.html`:** every record grouped by category, with its two screenshots side by
   side. Image paths are relative to the export folder, so the page keeps working as long
   as the project folder is moved whole.

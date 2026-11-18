@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"terra-point-check/internal/annotation"
@@ -71,6 +72,19 @@ func TestAnExportListsEachSampleRecordWithItsStatus(t *testing.T) {
 		t.Fatalf("sample records = %v, want %v", got, want)
 	}
 	if _, err := os.Stat(filepath.Join(res.Dir, "samples.csv")); err != nil {
+		t.Fatal(err)
+	}
+	page, err := os.ReadFile(filepath.Join(res.Dir, "report.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Estimated share of each category", "1 has a category, 1 was passed over and 1 is",
+		"Wilson score"} {
+		if !strings.Contains(string(page), want) {
+			t.Fatalf("the report does not say %q", want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(res.Dir, "estimates_schools.csv")); err != nil {
 		t.Fatal(err)
 	}
 }

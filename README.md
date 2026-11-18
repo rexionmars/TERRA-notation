@@ -145,7 +145,8 @@ copy; it refuses the upgraded file.
 | `annotations.gpkg` | one point layer per annotated layer, `<layer>_annotations`, with the answer and the source attributes, for QGIS |
 | `samples.csv`, `sample_strata.csv` | each sample's design (population, strata, allocation, seed, when it was drawn and replaced, answers that existed before it), and each stratum's size and the number drawn |
 | `sample_<id>.csv` | the records of a sample in their order, with their stratum and status: answered, passed over, or not reached |
-| `report.html` | each record with its two screenshots side by side, grouped by category, with counts |
+| `estimates_<layer>.csv` | the share of each category, with its 95 % interval and the method, for the population and each stratum of the layer's sample; without a sample, the shares of the answered records with no interval |
+| `report.html` | the same shares as tables, with what the sample left unanswered and the median time per record; then each record with its two screenshots side by side, grouped by category |
 
 ## Network
 

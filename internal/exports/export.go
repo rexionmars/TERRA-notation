@@ -63,6 +63,12 @@ type layerData struct {
 	records   []record
 	history   []annotation.HistoryRow
 	sourceErr string
+	// sample is the layer's current sample, nil when it has none, and
+	// sampleRecords its records in order.
+	sample        *annotation.Sample
+	sampleRecords []annotation.SampleRecord
+	shares        []share
+	pace          annotation.Pace
 }
 
 // Write exports every layer with annotations or screenshots into a new
@@ -88,7 +94,7 @@ func Write(p *annotation.Project, src *gpkg.File, parent string) (*Result, error
 	res := &Result{Dir: dir}
 	var all []layerData
 	for _, name := range layers {
-		ld, err := collect(p, src, name)
+		ld, err := collect(p, src, name, info.Settings.Categories)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +113,15 @@ func Write(p *annotation.Project, src *gpkg.File, parent string) (*Result, error
 		if err := writeHistoryCSV(h, ld, labels); err != nil {
 			return nil, err
 		}
-		res.Files = append(res.Files, f, h)
+		var sampleID *int64
+		if ld.sample != nil {
+			sampleID = &ld.sample.ID
+		}
+		e, err := writeEstimates(dir, ld.name, sampleID, ld.shares, labels)
+		if err != nil {
+			return nil, err
+		}
+		res.Files = append(res.Files, f, h, e)
 	}
 	sampleFiles, err := writeSamples(dir, p, labels)
 	if err != nil {
@@ -133,7 +147,7 @@ func Write(p *annotation.Project, src *gpkg.File, parent string) (*Result, error
 	return res, nil
 }
 
-func collect(p *annotation.Project, src *gpkg.File, name string) (layerData, error) {
+func collect(p *annotation.Project, src *gpkg.File, name string, cats []annotation.Category) (layerData, error) {
 	ld := layerData{name: name}
 	sums, err := p.Summaries(name)
 	if err != nil {
@@ -162,6 +176,24 @@ func collect(p *annotation.Project, src *gpkg.File, name string) (layerData, err
 	}
 	sort.Slice(ld.records, func(i, j int) bool { return ld.records[i].fid < ld.records[j].fid })
 	if ld.history, err = p.LayerHistory(name); err != nil {
+		return ld, err
+	}
+	if ld.sample, err = p.CurrentSample(name); err != nil {
+		return ld, err
+	}
+	if ld.sample != nil {
+		if ld.sampleRecords, err = p.SampleRecords(ld.sample.ID); err != nil {
+			return ld, err
+		}
+	}
+	category := map[int64]string{}
+	for _, r := range ld.records {
+		if r.ann != nil {
+			category[r.fid] = r.ann.Category
+		}
+	}
+	ld.shares = layerShares(ld.sample, ld.sampleRecords, cats, category)
+	if ld.pace, err = p.LayerPace(name); err != nil {
 		return ld, err
 	}
 	return ld, nil
