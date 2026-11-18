@@ -1,6 +1,8 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "maplibre-gl/dist/maplibre-gl.css"
+// Before any map is built; see the module.
+import "./lib/maplibreWorker"
 import "./index.css"
 import App from "./App"
 

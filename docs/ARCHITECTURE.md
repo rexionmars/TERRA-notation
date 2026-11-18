@@ -189,3 +189,10 @@ was computed from is never overwritten:
 - **MapLibre's stylesheet.** It is not in a cascade layer, and Tailwind 4's utilities are,
   so MapLibre's `.maplibregl-map { position: relative }` beats a Tailwind `absolute`. The
   map container is positioned with an inline style for that reason.
+- **MapLibre's worker.** MapLibre looks for its worker beside its own module. Under Vite's
+  dev server that file is missing from the optimised dependencies, and in the packaged
+  application the page is served over `wails://`, so `new Worker("")` loads the page
+  itself. Nothing reports either: raster tiles are read on the main thread and draw,
+  while every GeoJSON source stays loading forever and the map never becomes idle.
+  `lib/maplibreWorker.ts`, imported first in `main.tsx`, hands MapLibre the worker that
+  Vite bundles with `?worker&url`, the fix the TERRA application uses.

@@ -37,6 +37,10 @@ format and is discussed before any code is written.
 - Shipping code never generates data to stand in for a result it could not get. A missing
   value is shown as missing, with the reason.
 
+- `frontend/src/lib/maplibreWorker.ts` stays imported first in `main.tsx`. Without it no
+  GeoJSON layer draws, the map never becomes idle, a map capture waits forever, and
+  nothing says why (see "MapLibre's worker" in the architecture notes).
+
 ## Contracts across languages
 
 - `frontend/src/lib/types.ts` mirrors, by hand, the JSON tags of the Go structs the bound
