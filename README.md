@@ -51,11 +51,17 @@ open -a "build/bin/TERRA Notation.app" --args /path/to/project-folder   # open a
      field does the same when the clipboard holds coordinates). It reads
      `-7.546178, -63.067186` as Google Maps copies it, decimal commas
      (`-7,546178; -63,067186`), degrees, minutes and seconds (`7°32'46.2"S 63°04'01.9"W`)
-     and Google Maps links. The map centres there with a blue diamond and lists the five
-     nearest records of the layer with their distance; the record list can be ordered by
-     distance to it. A pair given longitude first is turned round when only that order
-     falls within the layer. A map capture with the diamond in view shows it, and the
-     legend gives its distance from the record.
+     and Google Maps links. The map centres there with a blue diamond and lists the nearest
+     records with their distance, from the open layer and from the other layers of the
+     same register (those whose identifier column has the same name, `cnefe_id` for the
+     CNEFE schools and health facilities). A record exactly at the location, within 1 m,
+     is opened, switching layer if it is in another one; a coordinate copied from TERRA or
+     QGIS therefore lands on its record. Layers of another source, such as OpenStreetMap,
+     are left out of that list, which would otherwise reveal what a hidden `matched`
+     column holds. The record list can be ordered by distance to the location. A pair
+     given longitude first is turned round when only that order falls within the layer. A
+     map capture with the diamond in view shows it, and the legend gives its distance from
+     the record.
    - **1** to **9** choose the category; type what Google Maps shows at the point and any notes.
    - **⌘↵** saves and moves to the next record; **⌥↓ / ⌥↑** move without leaving the form
      (unsaved changes are saved first). **F** shows both screenshots full size; **M**

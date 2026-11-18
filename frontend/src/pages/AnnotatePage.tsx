@@ -26,6 +26,7 @@ import type {
   Image,
   Layer,
   LayerSettings,
+  NearRecord,
   ProjectState,
   Entry,
   Row,
@@ -35,7 +36,7 @@ import type {
 } from "@/lib/types"
 import { AnnotationForm, type FormState } from "@/components/AnnotationForm"
 import { CompareView } from "@/components/CompareView"
-import { LocationBox, type NearRecord } from "@/components/LocationBox"
+import { LocationBox } from "@/components/LocationBox"
 import { MapView, type ContextLayer, type MapHandle } from "@/components/MapView"
 import { RecordList } from "@/components/RecordList"
 import { SettingsDialog } from "@/components/SettingsDialog"
@@ -69,6 +70,13 @@ const emptyLayer: LayerSettings = {
   hidden_columns: [],
 }
 const emptyForm: FormState = { category: "", reference_label: "", notes: "" }
+
+/*
+  A pasted location this close to a record is that record: a coordinate copied
+  from the layer's own attributes, or from another tool reading the same
+  file, lands within millimetres of it.
+*/
+const EXACT_MATCH_METERS = 1
 
 function isPointLayer(l: Layer): boolean {
   const t = l.geometry_type.toUpperCase()
@@ -172,6 +180,9 @@ export function AnnotatePage({
 
   const mapRef = useRef<MapHandle>(null)
   const recordRequest = useRef(0)
+  // A record to select once its layer has loaded, when a pasted location
+  // opened a record of another layer.
+  const pendingRecord = useRef<{ layer: string; fid: number } | null>(null)
   const lastIndex = useRef(0)
 
   const flash = (text: string) => {
@@ -276,6 +287,12 @@ export function AnnotatePage({
 
   useEffect(() => {
     if (!table) return
+    const pending = pendingRecord.current
+    pendingRecord.current = null
+    if (pending && pending.layer === table.layer && rowByFid.has(pending.fid)) {
+      setFid(pending.fid)
+      return
+    }
     const stored = readStored<number>(key(`fid:${table.layer}`))
     setFid(stored !== null && rowByFid.has(stored) ? stored : (visible[0]?.fid ?? null))
   }, [table])
@@ -353,8 +370,9 @@ export function AnnotatePage({
     if (next && next.fid !== fid) setFid(next.fid)
   }
 
-  const changeLayer = async (name: string) => {
+  const changeLayer = async (name: string, select?: number) => {
     if (!(await save())) return
+    pendingRecord.current = select === undefined ? null : { layer: name, fid: select }
     setFid(null)
     setSqlIds(null)
     setSqlText("")
@@ -529,34 +547,68 @@ export function AnnotatePage({
     setLocError("")
     setPasted([r.lon, r.lat])
     setPastedRequest((n) => n + 1)
+    openExactMatch.current = true
     setSourceTab("map")
     if (r.swapped) flash("Read as longitude, latitude")
     return true
   }
 
-  const nearest: NearRecord[] = useMemo(() => {
-    if (!pasted || !table) return []
-    return table.rows
-      .flatMap((r) =>
-        r.position
-          ? [
-              {
-                fid: r.fid,
-                row: r,
-                meters: distanceMeters(
-                  pasted[0],
-                  pasted[1],
-                  r.position[0],
-                  r.position[1]
-                ),
-              },
-            ]
-          : []
+  /*
+    The layers a pasted location is looked up in: the open layer, and every
+    point layer whose identifier column has the same name (cnefe_id for both
+    CNEFE layers), which is to say the same register. Layers of another
+    source, such as OpenStreetMap, are left out: listing "an OpenStreetMap
+    school 30 m away" would tell the annotator what a hidden matched column
+    holds.
+  */
+  const registerLayers = useMemo(() => {
+    if (!layer) return []
+    const id = ls.id_column
+    return pointLayers
+      .filter(
+        (l) =>
+          l.name === layer.name ||
+          (id !== "" && settings.layers[l.name]?.id_column === id)
       )
-      .sort((a, b) => a.meters - b.meters)
-      .slice(0, 5)
-      .map((n) => ({ fid: n.fid, title: titleOf(n.row), meters: n.meters }))
-  }, [pasted, table, hidden, ls.name_column])
+      .map((l) => l.name)
+  }, [layer, ls.id_column, pointLayers, settings.layers])
+  const registerKey = registerLayers.join("\n")
+
+  const [nearest, setNearest] = useState<NearRecord[]>([])
+  // Set by a new paste: a record exactly at the location is then opened.
+  const openExactMatch = useRef(false)
+
+  /** Opens a record, switching to its layer when it is another. */
+  const openRecord = async (layerName: string, recordFid: number) => {
+    if (table?.layer === layerName) await selectFid(recordFid)
+    else await changeLayer(layerName, recordFid)
+  }
+
+  useEffect(() => {
+    if (!pasted || registerLayers.length === 0) {
+      setNearest([])
+      return
+    }
+    let cancelled = false
+    api
+      .nearestRecords(registerLayers, pasted[0], pasted[1], 6)
+      .then((list) => {
+        if (cancelled) return
+        setNearest(list)
+        const exact = list[0]
+        if (openExactMatch.current && exact && exact.meters <= EXACT_MATCH_METERS) {
+          if (exact.layer !== table?.layer || exact.fid !== fid) {
+            flash(`Opened ${exact.title} (${exact.layer}), the record at this location`)
+          }
+          void openRecord(exact.layer, exact.fid)
+        }
+        openExactMatch.current = false
+      })
+      .catch((e) => !cancelled && setLocError(errorText(e)))
+    return () => {
+      cancelled = true
+    }
+  }, [pasted, pastedRequest, registerKey])
 
   /*
     ⌘V outside a text field: a location on the clipboard moves the map there;
@@ -1033,7 +1085,7 @@ export function AnnotatePage({
                   layer={table?.layer ?? ""}
                   nearest={nearest}
                   selected={fid}
-                  onPick={(n) => void selectFid(n)}
+                  onPick={(l, n) => void openRecord(l, n)}
                   onShow={() => setPastedRequest((n) => n + 1)}
                   onClear={() => {
                     setPasted(null)

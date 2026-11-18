@@ -12,6 +12,7 @@ import type {
   HistoryEntry,
   Image,
   LayerSummary,
+  NearRecord,
   NewProject,
   ProjectState,
   RecentProject,
@@ -46,6 +47,8 @@ export const api = {
   loadLayer: (name: string) => as<Table>(App.LoadLayer(name)),
   filterLayer: (name: string, condition: string) =>
     as<number[]>(App.FilterLayer(name, condition)),
+  nearestRecords: (layers: string[], lon: number, lat: number, limit: number) =>
+    as<NearRecord[]>(App.NearestRecords(layers, lon, lat, limit)),
   contextFeatures: (name: string, bbox: BBox) =>
     as<ContextFeatures>(App.ContextFeatures(name, bbox)),
 

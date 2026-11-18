@@ -136,6 +136,13 @@ tested with Vitest.
   layer's extent (padded by 1°) and the reversed one falls inside, the pair is reversed and
   the page says so. Distances are great-circle distances on the IUGG mean radius, within
   0.5 % of the ellipsoid's.
+- **The record at a pasted location.** The nearest records are looked up in Go across the
+  open layer and every point layer whose identifier column has the same name, that is,
+  the same register: `schools_cnefe` and `health_cnefe` share `cnefe_id`. A record within
+  1 m is the record the coordinate was copied from, and it is opened, switching layer when
+  it is in another; the switch waits for the layer to load through a pending selection.
+  Layers of another source are not searched. An OpenStreetMap school listed 30 m away
+  would tell the annotator what a hidden `matched` column holds.
 - **Keyboard.** One `keydown` listener reads the latest handlers through a ref. `⌘V`
   outside a text field reads the clipboard text first: coordinates move the map, and
   anything else is taken as an image for the active slot.

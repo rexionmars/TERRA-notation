@@ -168,6 +168,13 @@ export interface Draft {
   notes: string
 }
 
+export interface NearRecord {
+  layer: string
+  fid: number
+  title: string
+  meters: number
+}
+
 export interface RecentProject {
   dir: string
   name: string

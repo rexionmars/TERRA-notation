@@ -1,12 +1,7 @@
 import type { Ref } from "react"
 import { formatLength, formatPosition } from "@/lib/format"
+import type { NearRecord } from "@/lib/types"
 import { Button, cn, inputClass, Kbd } from "@/components/ui"
-
-export interface NearRecord {
-  fid: number
-  title: string
-  meters: number
-}
 
 /**
  * Over the map: a field that takes a pasted location, and, once there is one,
@@ -36,7 +31,7 @@ export function LocationBox({
   layer: string
   nearest: NearRecord[]
   selected: number | null
-  onPick: (fid: number) => void
+  onPick: (layer: string, fid: number) => void
   onShow: () => void
   onClear: () => void
 }) {
@@ -94,19 +89,25 @@ export function LocationBox({
               Clear
             </Button>
           </div>
-          <div className="mt-1.5 mb-0.5 text-[11px] text-muted">Nearest in {layer}</div>
+          <div className="mt-1.5 mb-0.5 text-[11px] text-muted">Nearest records</div>
           <ul className="flex flex-col">
             {nearest.map((n) => (
-              <li key={n.fid}>
+              <li key={`${n.layer}:${n.fid}`}>
                 <button
                   type="button"
-                  onClick={() => onPick(n.fid)}
+                  onClick={() => onPick(n.layer, n.fid)}
+                  title={n.layer === layer ? undefined : `Opens layer ${n.layer}`}
                   className={cn(
                     "flex w-full items-center gap-2 rounded px-1.5 py-0.5 text-left hover:bg-hover",
-                    n.fid === selected && "bg-accent/15"
+                    n.layer === layer && n.fid === selected && "bg-accent/15"
                   )}
                 >
                   <span className="min-w-0 flex-1 truncate">{n.title}</span>
+                  {n.layer !== layer && (
+                    <span className="shrink-0 rounded border border-line px-1 text-[10px] text-muted">
+                      {n.layer}
+                    </span>
+                  )}
                   <span className="shrink-0 text-muted tabular-nums">
                     {formatLength(n.meters)}
                   </span>

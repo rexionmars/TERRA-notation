@@ -50,6 +50,10 @@ export function LoadLayer(arg1) {
   return window['go']['main']['App']['LoadLayer'](arg1);
 }
 
+export function NearestRecords(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['NearestRecords'](arg1, arg2, arg3, arg4);
+}
+
 export function OpenProject(arg1) {
   return window['go']['main']['App']['OpenProject'](arg1);
 }

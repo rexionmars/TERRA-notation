@@ -662,6 +662,24 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class NearRecord {
+	    layer: string;
+	    fid: number;
+	    title: string;
+	    meters: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NearRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.layer = source["layer"];
+	        this.fid = source["fid"];
+	        this.title = source["title"];
+	        this.meters = source["meters"];
+	    }
+	}
 	export class NewProject {
 	    dir: string;
 	    name: string;
