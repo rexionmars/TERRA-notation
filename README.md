@@ -16,9 +16,22 @@ to be a restaurant, an empty lot or an abandoned building. For each record it ke
 The GeoPackage is opened read-only and never written. Answers and screenshots go to a
 project folder of their own.
 
+![TERRA Point Check with a school of the CNEFE open: the list of records on the left, the layer's point on Esri World Imagery beside a Google Maps screenshot of the same place, and the answer form and attributes below](docs/img/annotate-live-map.png)
+
+*A school of the CNEFE in Humaitá (AM). Left, the layer's point under the yellow crosshair
+on Esri World Imagery of 2024-07-10 (WorldView-3, 0.31 m); right, Google Maps at the same
+coordinates, pasted from the clipboard; below, the categories, the label and date of the
+reference, and the record's attributes.*
+
 Wails v2 (Go) with a React, TypeScript, Vite, Tailwind and MapLibre frontend, the same
 stack as the TERRA desktop application. GeoPackages are read in Go with the pure-Go SQLite
 driver; GDAL is not needed.
+
+![The same school in TERRA: a CBERS-4A scene laid over Esri World Imagery around the point, and the record's attributes in the side panel](docs/img/terra-cbers-4a.png)
+
+*The same record (`cnefe_id` 101640491) in TERRA, over a CBERS-4A scene (INPE, CC BY 4.0)
+on Esri World Imagery. TERRA Point Check draws each layer in the color TERRA keeps for it
+in the GeoPackage.*
 
 ## Build and run
 
@@ -62,13 +75,19 @@ identifier, which changed with the name and is now fixed in `build/darwin/Info.p
 4. For each record:
    - **C** captures the map on the left. `G` opens Google Maps (satellite) at the
      coordinates, `P` drops a pin there, `V` opens Street View.
+
+     ![The left slot showing the map capture, with a white strip under the imagery giving the record, its coordinates, the imagery and a scale bar](docs/img/annotate-map-capture.png)
+
+     *The same record after **C**. The capture takes the left slot, with a strip giving the
+     record's name, layer, feature id and attributes, its coordinates and the time of
+     capture, the basemap, zoom and imagery date, the legend and a 100 m scale bar.*
    - **R** hides the window so you can select a region of the screen (the browser with
      Google Maps); the selection becomes the screenshot of the active slot. `⌘V` pastes an
      image copied with `⌃⇧⌘4`; an image file can also be dropped on a slot. Click a slot to
      make it the active one.
    - **The map** draws every layer of the open register (the point layers whose
      identifier column has the same name: `schools_cnefe` and `health_cnefe` share
-     `cnefe_id`), each in the colour TERRA gives it in the same file. Hovering a point
+     `cnefe_id`), each in the color TERRA gives it in the same file. Hovering a point
      names it and its layer; pressing it opens that record, switching layer if needed; a
      right-click copies "lat, lon" of the place under the pointer, ready to paste into
      Google Maps. The open record is the larger dot under the yellow crosshair, and a
@@ -177,7 +196,7 @@ coordinates. Google Maps is opened in the browser and never loaded inside the
 application: Google's terms do not allow its tiles in another application's map, and the
 browser shows its latest imagery and place labels anyway.
 
-Where Esri has no imagery at a zoom it serves a grey "Map data not yet available" tile. In
+Where Esri has no imagery at a zoom it serves a gray "Map data not yet available" tile. In
 the interior of Brazil its finest level often stops at 17 (measured at Humaitá, AM). The
 map asks for missing tiles as errors instead and shows the finest level that exists,
 enlarged.
